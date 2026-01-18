@@ -1,0 +1,32 @@
+# Build outputs
+/build/
+**/build/
+*.o
+*.obj
+*.exe
+*.out
+*.a
+
+# Java
+target/
+*.class
+
+# Node and frontend
+node_modules/
+dist/
+.vite/
+
+# Synthetic data. Regenerable with Synthea and can be large, so it is not
+# committed. Only the fields we match on get loaded into the database.
+/data/
+**/synthea/output/
+/tools/synthea/output/
+
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Synthea runtime jar (large, downloaded locally)
+tools/synthea/*.jar
