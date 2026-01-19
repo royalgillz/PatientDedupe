@@ -14,7 +14,36 @@ is that two records are the same person, auto-merges the obvious ones, and sends
 uncertain ones to a human to review with a clear explanation of why they were
 flagged.
 
-## The problem, and who this is for
+## The problem
+
+In US healthcare the same person routinely ends up with more than one medical record.
+Details get entered differently on each visit (Bob instead of Robert, a transposed
+digit in a date of birth, a surname that changed after marriage), and there is no
+national patient identifier to tie those records back together. The result is a
+fragmented view of a single human spread across several record numbers.
+
+That is not just untidy, it is dangerous. An allergy, an active medication, or a
+critical lab result can sit in one record while the clinician is looking at the
+other. It is also expensive, through repeated tests, denied or reworked claims, and
+hours of manual cleanup. The job of an Enterprise Master Patient Index (EMPI) is to
+find those duplicates, decide with calibrated confidence when two records are the
+same person, merge the clear cases automatically, and route the uncertain ones to a
+human with an explanation they can audit. Doing that well means being both fast, since
+you may have to compare a whole population, and trustworthy, since every merge is a
+patient-safety event that has to be explainable and reversible.
+
+## Why it matters now
+
+Patient matching is a recognized patient-safety and cost problem, and it sits
+squarely inside current US interoperability rules. CMS-0057-F, the federal
+Interoperability and Prior Authorization rule, has operational provisions that began
+on January 1, 2026 and requires four FHIR APIs to be live by January 1, 2027. You
+cannot safely exchange a patient's record between systems if you cannot reliably tell
+which patient it belongs to, so clean patient matching is a foundation for that data
+exchange. These are industry facts that motivate the project, not numbers this
+project measures itself.
+
+## Who it is for
 
 Priya Nair is a senior integration engineer on the interoperability team at a
 mid-size hospital network. Her recurring nightmare is duplicate-patient chaos during
@@ -26,8 +55,18 @@ once as "Robert Smith" and once as "Bob Smith," with the allergy filed under the
 other record. PatientDedupe is built for Priya: a matcher fast enough to run across
 the whole population, that explains itself so she can trust and audit each merge.
 
-Patient matching is a recognized patient-safety and cost problem, made worse because
-the United States has no national patient identifier.
+## Why it was built
+
+PatientDedupe is a portfolio project with a real engineering spine. It exists to
+demonstrate, end to end, a believable healthcare data system and to back that up with
+honest measurements rather than claims. It deliberately exercises four core skills in
+one coherent product: C++ for a performance-critical matching core, SQL for the
+blocking, storage, and audit trail, Java for a standard FHIR API, and Hadoop with
+Hive for population-scale analytics. It runs entirely on synthetic data so the whole
+thing can be open, reproducible, and free of any privacy or credentialing friction.
+The guiding principle is that every part of the system should be explainable and
+defensible, both to a clinician who has to trust a merge and to an interviewer who
+asks how it works.
 
 ## Architecture
 
