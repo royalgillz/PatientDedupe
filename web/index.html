@@ -105,15 +105,24 @@
     border-radius: var(--r);
     padding: var(--s4) var(--s5);
     position: relative;
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s5);
   }
   .node.core { border-color: rgba(16,185,129,0.45); background: linear-gradient(180deg, rgba(16,185,129,0.06), var(--panel)); }
   .node.data { border-color: rgba(76,141,255,0.4); }
+  .node .main { display: flex; flex-direction: column; }
   .node .tag {
     font-family: var(--mono); font-size: 11px; letter-spacing: 1.2px;
     text-transform: uppercase; color: var(--fg-3); display: block; margin-bottom: 3px;
   }
   .node .title { font-weight: 600; font-size: 15px; color: var(--fg); }
-  .node .desc { font-size: 13px; color: var(--fg-2); margin-top: 3px; }
+  .node .desc { font-size: 13px; color: var(--fg-2); margin-top: 3px; max-width: 60ch; }
+  .skill {
+    flex-shrink: 0; align-self: center;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--fg-2); background: var(--panel-2);
+    border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 9px; white-space: nowrap;
+  }
+  .node.core .skill { color: var(--match); border-color: rgba(16,185,129,0.4); }
   .connector {
     width: 2px; height: 22px; margin: 0 auto;
     background: linear-gradient(180deg, var(--line-2), var(--line-2));
@@ -130,21 +139,28 @@
     font-family: var(--mono); font-size: 11px; color: var(--fg-3); white-space: nowrap;
   }
   .fanout { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
+  .fanout .node { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; }
   @media (max-width: 680px) { .fanout { grid-template-columns: 1fr; } h1 { font-size: 34px; } }
 
   /* Phase list */
   .phases { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--s2); }
   .phase {
-    display: grid; grid-template-columns: 18px 92px 1fr; align-items: baseline; gap: var(--s3);
-    padding: var(--s3) var(--s4);
+    display: grid; grid-template-columns: 14px 78px 1fr auto; align-items: center; gap: var(--s4);
+    padding: var(--s4);
     border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
   }
   .phase.done { border-color: rgba(16,185,129,0.3); }
   .phase.current { border-color: rgba(245,158,11,0.4); background: linear-gradient(180deg, rgba(245,158,11,0.05), var(--panel)); }
   .phase .pno { font-family: var(--mono); font-size: 12px; color: var(--fg-3); }
+  .phase .pcell { display: flex; flex-direction: column; gap: 2px; }
   .phase .pname { font-weight: 600; font-size: 14px; }
   .phase .pdesc { color: var(--fg-2); font-size: 13px; }
-  .status { font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px; }
+  .pstatus {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px;
+    padding: 3px 8px; border-radius: 5px; border: 1px solid var(--line-2); color: var(--fg-3);
+  }
+  .pstatus.s-done { color: var(--match); border-color: rgba(16,185,129,0.4); }
+  .pstatus.s-next { color: var(--review); border-color: rgba(245,158,11,0.4); }
 
   /* Stack grid */
   .stack { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2) var(--s5); }
@@ -187,33 +203,43 @@
     <p class="section-label">Architecture</p>
     <div class="pipe">
       <div class="node data">
-        <span class="tag">Source &middot; Synthea</span>
-        <span class="title">Synthetic patient population</span>
-        <span class="desc">Fake but realistic records with known ground-truth identities. No real patient data, ever.</span>
+        <div class="main">
+          <span class="title">Synthetic patient population</span>
+          <span class="desc">Fake but realistic records with known ground-truth identities. No real patient data, ever.</span>
+        </div>
+        <span class="skill">Synthea</span>
       </div>
       <div class="connector"></div>
       <div class="node data">
-        <span class="tag">SQL &middot; storage</span>
-        <span class="title">Postgres: match fields and blocking keys</span>
-        <span class="desc">Only the fields we match on, plus phonetic keys and partitions.</span>
+        <div class="main">
+          <span class="title">Postgres: match fields and blocking keys</span>
+          <span class="desc">Only the fields we match on, plus phonetic keys and partitions.</span>
+        </div>
+        <span class="skill">SQL</span>
       </div>
       <div class="connector"><span class="edge-label">prune the N-squared space</span></div>
       <div class="node">
-        <span class="tag">SQL &middot; blocking</span>
-        <span class="title">Blocking layer</span>
-        <span class="desc">Picks only plausible record pairs using phonetic keys, partitioning, and indexes.</span>
+        <div class="main">
+          <span class="title">Blocking layer</span>
+          <span class="desc">Picks only plausible record pairs using phonetic keys, partitioning, and indexes.</span>
+        </div>
+        <span class="skill">SQL</span>
       </div>
       <div class="connector"><span class="edge-label">candidate pairs</span></div>
       <div class="node core">
-        <span class="tag">C++ &middot; performance core</span>
-        <span class="title">Matching engine</span>
-        <span class="desc">Jaro-Winkler, Levenshtein, Damerau-Levenshtein, and date logic combined into one tunable weighted score with per-field reasons.</span>
+        <div class="main">
+          <span class="title">Matching engine</span>
+          <span class="desc">Jaro-Winkler, Levenshtein, Damerau-Levenshtein, and date logic combined into one tunable weighted score with per-field reasons.</span>
+        </div>
+        <span class="skill">C++</span>
       </div>
       <div class="connector"></div>
       <div class="node data">
-        <span class="tag">SQL &middot; audit</span>
-        <span class="title">Match results, scores, and audit trail</span>
-        <span class="desc">Every decision recorded: who merged what, when, and why.</span>
+        <div class="main">
+          <span class="title">Match results, scores, and audit trail</span>
+          <span class="desc">Every decision recorded: who merged what, when, and why.</span>
+        </div>
+        <span class="skill">SQL</span>
       </div>
       <div class="connector"></div>
       <div class="fanout">
@@ -240,34 +266,58 @@
     <p class="section-label">Build progress</p>
     <ul class="phases">
       <li class="phase done">
-        <span class="dot match" style="align-self:center"></span>
-        <span><span class="pno">Phase 0</span></span>
-        <span><span class="pname">Setup and understanding</span> &nbsp; <span class="status" style="color:var(--match)">DONE</span><br/><span class="pdesc">Remote, toolchain, and a 1000-patient Synthea dataset.</span></span>
+        <span class="dot match"></span>
+        <span class="pno">Phase 0</span>
+        <span class="pcell">
+          <span class="pname">Setup and understanding</span>
+          <span class="pdesc">Remote, toolchain, and a 1000-patient Synthea dataset.</span>
+        </span>
+        <span class="pstatus s-done">DONE</span>
       </li>
       <li class="phase current">
-        <span class="dot review" style="align-self:center"></span>
-        <span><span class="pno">Phase 1</span></span>
-        <span><span class="pname">C++ matching core</span> &nbsp; <span class="status" style="color:var(--review)">NEXT</span><br/><span class="pdesc">Hand-rolled metrics, weighted score, precision, recall, and speed.</span></span>
+        <span class="dot review"></span>
+        <span class="pno">Phase 1</span>
+        <span class="pcell">
+          <span class="pname">C++ matching core</span>
+          <span class="pdesc">Hand-rolled metrics, weighted score, precision, recall, and speed.</span>
+        </span>
+        <span class="pstatus s-next">NEXT</span>
       </li>
       <li class="phase">
-        <span class="dot idle" style="align-self:center"></span>
-        <span><span class="pno">Phase 2</span></span>
-        <span><span class="pname">SQL blocking and storage</span><br/><span class="pdesc">Phonetic keys, partitioning, indexing, audit trail.</span></span>
+        <span class="dot idle"></span>
+        <span class="pno">Phase 2</span>
+        <span class="pcell">
+          <span class="pname">SQL blocking and storage</span>
+          <span class="pdesc">Phonetic keys, partitioning, indexing, audit trail.</span>
+        </span>
+        <span class="pstatus">PLANNED</span>
       </li>
       <li class="phase">
-        <span class="dot idle" style="align-self:center"></span>
-        <span><span class="pno">Phase 3</span></span>
-        <span><span class="pname">Java FHIR API</span><br/><span class="pdesc">A HAPI FHIR Patient/$match endpoint.</span></span>
+        <span class="dot idle"></span>
+        <span class="pno">Phase 3</span>
+        <span class="pcell">
+          <span class="pname">Java FHIR API</span>
+          <span class="pdesc">A HAPI FHIR Patient/$match endpoint.</span>
+        </span>
+        <span class="pstatus">PLANNED</span>
       </li>
       <li class="phase">
-        <span class="dot idle" style="align-self:center"></span>
-        <span><span class="pno">Phase 4</span></span>
-        <span><span class="pname">Review console</span><br/><span class="pdesc">A polished stewardship UI with Playwright tests and screenshots.</span></span>
+        <span class="dot idle"></span>
+        <span class="pno">Phase 4</span>
+        <span class="pcell">
+          <span class="pname">Review console</span>
+          <span class="pdesc">A polished stewardship UI with Playwright tests and screenshots.</span>
+        </span>
+        <span class="pstatus">PLANNED</span>
       </li>
       <li class="phase">
-        <span class="dot idle" style="align-self:center"></span>
-        <span><span class="pno">Phase 5</span></span>
-        <span><span class="pname">Hadoop and Hive analytics</span><br/><span class="pdesc">Duplicate rate by site, run at two scales.</span></span>
+        <span class="dot idle"></span>
+        <span class="pno">Phase 5</span>
+        <span class="pcell">
+          <span class="pname">Hadoop and Hive analytics</span>
+          <span class="pdesc">Duplicate rate by site, run at two scales.</span>
+        </span>
+        <span class="pstatus">PLANNED</span>
       </li>
     </ul>
   </section>

@@ -14,6 +14,15 @@ is that two records are the same person, auto-merges the obvious ones, and sends
 uncertain ones to a human to review with a clear explanation of why they were
 flagged.
 
+## Live demo
+
+A live status page is deployed as a static Hugging Face Space and redeploys
+automatically on every push to `main`:
+[huggingface.co/spaces/Sehajgill/PatientDedupe](https://huggingface.co/spaces/Sehajgill/PatientDedupe).
+It grows into the full review console in Phase 4.
+
+![PatientDedupe status page](assets/screenshots/status-page-desktop.png)
+
 ## The problem
 
 In US healthcare the same person routinely ends up with more than one medical record.

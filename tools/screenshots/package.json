@@ -1,0 +1,10 @@
+{
+  "name": "patientdedupe-screenshots",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Playwright screenshots of PatientDedupe UI states",
+  "devDependencies": {
+    "playwright": "^1.61.0"
+  }
+}
