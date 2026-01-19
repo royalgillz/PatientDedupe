@@ -1,13 +1,15 @@
 name: Deploy to Hugging Face Space
 
-# Mirrors the contents of web/ to the static Hugging Face Space on every push to
-# main, so the live status page always reflects the latest commit.
+# Builds the Vite + React matching playground and mirrors the static build output
+# to the Hugging Face Space on every push to main, so the live demo always reflects
+# the latest commit. The C++ engine is shipped as a prebuilt WebAssembly module that
+# lives in the repo, so this job only needs Node to build the frontend.
 
 on:
   push:
     branches: [main]
     paths:
-      - "web/**"
+      - "frontend/**"
       - ".github/workflows/deploy-space.yml"
   workflow_dispatch:
 
@@ -22,6 +24,17 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -30,11 +43,11 @@ jobs:
       - name: Install the Hugging Face CLI
         run: pip install -U "huggingface_hub[cli]"
 
-      - name: Sync web/ to the Space
+      - name: Sync the build to the Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          hf upload Sehajgill/PatientDedupe ./web . \
+          hf upload Sehajgill/PatientDedupe ./frontend/dist . \
             --repo-type space \
             --delete "*" \
-            --commit-message "Sync status page from ${GITHUB_SHA}"
+            --commit-message "Deploy playground from ${GITHUB_SHA}"

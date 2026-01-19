@@ -8,10 +8,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(__dirname, "../../assets/screenshots");
 
 const target = process.argv[2] || "https://sehajgill-patientdedupe.static.hf.space";
+const prefix = process.argv[3] || "status-page";
 
 const shots = [
-  { name: "status-page-desktop", width: 1440, height: 900, fullPage: true },
-  { name: "status-page-mobile", width: 390, height: 844, fullPage: true },
+  { name: `${prefix}-desktop`, width: 1440, height: 900, fullPage: true },
+  { name: `${prefix}-mobile`, width: 390, height: 844, fullPage: true },
 ];
 
 const browser = await chromium.launch();

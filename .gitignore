@@ -30,3 +30,6 @@ Thumbs.db
 
 # Synthea runtime jar (large, downloaded locally)
 tools/synthea/*.jar
+
+# Emscripten SDK (large, installed locally)
+tools/emsdk/
