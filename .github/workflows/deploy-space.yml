@@ -1,0 +1,40 @@
+name: Deploy to Hugging Face Space
+
+# Mirrors the contents of web/ to the static Hugging Face Space on every push to
+# main, so the live status page always reflects the latest commit.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy-space.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-space
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the Hugging Face CLI
+        run: pip install -U "huggingface_hub[cli]"
+
+      - name: Sync web/ to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          hf upload Sehajgill/PatientDedupe ./web . \
+            --repo-type space \
+            --delete "*" \
+            --commit-message "Sync status page from ${GITHUB_SHA}"
