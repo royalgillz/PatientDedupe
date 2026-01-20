@@ -181,5 +181,5 @@ app.use("/*", serveStatic({ root: "./public" }));
 app.get("/*", serveStatic({ path: "./public/index.html" }));
 
 const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: app.fetch, port });
+serve({ fetch: app.fetch, port, hostname: "0.0.0.0" });
 console.log(`PatientDedupe API listening on :${port}`);

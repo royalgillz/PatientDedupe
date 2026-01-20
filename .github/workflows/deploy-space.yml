@@ -1,14 +1,20 @@
 name: Deploy to Hugging Face Space
 
-# Builds the Vite + React matching playground and mirrors the static build output
-# to the Hugging Face Space on every push to main, so the live demo always reflects
-# the latest commit. The C++ engine is shipped as a prebuilt WebAssembly module that
-# lives in the repo, so this job only needs Node to build the frontend.
+# Ships the product to the Hugging Face Docker Space on every push to main. We stage
+# the Dockerfile plus the backend and frontend source (no node_modules, no secrets)
+# and upload it; Hugging Face builds the image and serves it. The database lives in
+# Supabase, supplied to the running container through the DATABASE_URL Space secret.
 
-# Manual only for now. The product moved to a Node API plus Postgres, so the live
-# demo is being moved from this static Space to a Docker Space that serves both the
-# API and the built frontend. Auto-deploy returns once the Docker Space is wired.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "deploy/README.space.md"
+      - ".github/workflows/deploy-space.yml"
   workflow_dispatch:
 
 concurrency:
@@ -22,16 +28,15 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Build the frontend
-        working-directory: frontend
+      - name: Stage the Space build context
         run: |
-          npm ci
-          npm run build
+          mkdir -p staging
+          cp Dockerfile .dockerignore staging/
+          cp deploy/README.space.md staging/README.md
+          cp -r backend staging/backend
+          cp -r frontend staging/frontend
+          rm -rf staging/backend/node_modules staging/frontend/node_modules \
+                 staging/frontend/dist staging/backend/.env
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -41,11 +46,11 @@ jobs:
       - name: Install the Hugging Face CLI
         run: pip install -U "huggingface_hub[cli]"
 
-      - name: Sync the build to the Space
+      - name: Upload to the Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          hf upload Sehajgill/PatientDedupe ./frontend/dist . \
+          hf upload Sehajgill/PatientDedupe ./staging . \
             --repo-type space \
             --delete "*" \
-            --commit-message "Deploy playground from ${GITHUB_SHA}"
+            --commit-message "Deploy from ${GITHUB_SHA}"
