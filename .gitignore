@@ -33,3 +33,7 @@ tools/synthea/*.jar
 
 # Emscripten SDK (large, installed locally)
 tools/emsdk/
+
+# Environment files with secrets (DATABASE_URL etc.)
+.env
+**/.env

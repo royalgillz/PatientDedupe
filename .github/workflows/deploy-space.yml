@@ -5,12 +5,10 @@ name: Deploy to Hugging Face Space
 # the latest commit. The C++ engine is shipped as a prebuilt WebAssembly module that
 # lives in the repo, so this job only needs Node to build the frontend.
 
+# Manual only for now. The product moved to a Node API plus Postgres, so the live
+# demo is being moved from this static Space to a Docker Space that serves both the
+# API and the built frontend. Auto-deploy returns once the Docker Space is wired.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/deploy-space.yml"
   workflow_dispatch:
 
 concurrency:

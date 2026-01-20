@@ -1,0 +1,18 @@
+# Local Postgres for development. The hosted demo uses a Supabase connection string
+# supplied through DATABASE_URL instead. Port 5433 avoids clashing with any local
+# Postgres already on 5432.
+services:
+  db:
+    image: postgres:17
+    container_name: patientdedupe-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: patientdedupe
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

@@ -1,0 +1,102 @@
+import { useQuery } from "@tanstack/react-query";
+import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import { ScrollText } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { api, type AuditEntry } from "@/lib/api";
+import { formatDateTime, relativeTime } from "@/lib/format";
+
+const ACTION_TONE = { merge: "match", not_a_match: "miss", need_info: "review" } as const;
+const ACTION_LABEL: Record<string, string> = {
+  merge: "Merged",
+  not_a_match: "Not a match",
+  need_info: "Need info",
+};
+
+const col = createColumnHelper<AuditEntry>();
+const columns = [
+  col.accessor("ts", {
+    header: "When",
+    cell: (c) => (
+      <span className="tnum text-ink-2" title={formatDateTime(c.getValue())}>{relativeTime(c.getValue())}</span>
+    ),
+  }),
+  col.accessor("actor", {
+    header: "Reviewer",
+    cell: (c) => <span className="font-medium text-ink">{c.getValue()}</span>,
+  }),
+  col.accessor("action", {
+    header: "Action",
+    cell: (c) => {
+      const a = c.getValue();
+      return <Badge tone={ACTION_TONE[a as keyof typeof ACTION_TONE] ?? "neutral"}>{ACTION_LABEL[a] ?? a}</Badge>;
+    },
+  }),
+  col.accessor("pair_id", {
+    header: "Task",
+    cell: (c) => <span className="tnum text-ink-2">TASK-{String(c.getValue()).padStart(4, "0")}</span>,
+  }),
+  col.accessor("score", {
+    header: "Score",
+    cell: (c) => <span className="tnum text-ink-2">{c.getValue() != null ? Number(c.getValue()).toFixed(2) : "-"}</span>,
+  }),
+  col.accessor("reason_code", {
+    header: "Reason",
+    cell: (c) => <span className="text-ink-2">{c.getValue() ?? "-"}</span>,
+  }),
+  col.accessor("note", {
+    header: "Note",
+    cell: (c) => <span className="text-ink-3">{c.getValue() || "-"}</span>,
+  }),
+];
+
+export default function Audit() {
+  const { data = [], isLoading } = useQuery({ queryKey: ["audit"], queryFn: api.audit });
+  const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
+
+  return (
+    <div className="mx-auto max-w-[1120px] space-y-5 p-6">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink">Audit log</h1>
+        <p className="mt-1 text-sm text-ink-2">Every steward decision, who made it, and why. This is the trust surface.</p>
+      </div>
+
+      <div className="overflow-hidden rounded-card border bg-surface shadow-[0_1px_2px_rgba(40,33,20,0.05)]">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            {table.getHeaderGroups().map((hg) => (
+              <tr key={hg.id} className="border-b bg-app">
+                {hg.headers.map((h) => (
+                  <th key={h.id} className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+                    {flexRender(h.column.columnDef.header, h.getContext())}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={columns.length} className="px-4 py-10 text-center text-ink-3">Loading...</td></tr>
+            ) : data.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-12 text-center">
+                  <ScrollText className="mx-auto mb-2 size-6 text-ink-3" />
+                  <div className="text-[13px] text-ink-2">No decisions yet. Merge or reject a pair in the queue.</div>
+                </td>
+              </tr>
+            ) : (
+              table.getRowModel().rows.map((row) => (
+                <tr key={row.id} className="border-b transition-colors last:border-0 hover:bg-subtle">
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-4 py-2.5 align-top">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

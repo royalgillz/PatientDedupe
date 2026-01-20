@@ -1,0 +1,23 @@
+{
+  "name": "patientdedupe-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "PatientDedupe API: serves the review queue, decisions, audit, and dashboard over the C++ matching engine and Postgres",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "seed": "tsx src/seed.ts",
+    "migrate": "tsx src/migrate.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.6",
+    "hono": "^4.12.27",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
