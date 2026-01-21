@@ -7,6 +7,13 @@ import { sql } from "./db.js";
 const app = new Hono();
 app.use("/api/*", cors());
 
+// Surface the real error to the client and the logs instead of a bare 500. The data
+// is synthetic, so a readable message is more helpful than hiding it.
+app.onError((err, c) => {
+  console.error("API error:", err);
+  return c.json({ error: err.message }, 500);
+});
+
 app.get("/api/health", (c) => c.json({ ok: true }));
 
 app.get("/api/reviewers", async (c) => {
