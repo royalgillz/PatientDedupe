@@ -1,139 +1,152 @@
 # PatientDedupe
 
-A fast, explainable patient record-matching service: a C++ matching core, real SQL
-blocking, a FHIR `Patient/$match` API, a human review console, and a Hadoop/Hive
-analytics layer over a synthetic patient population.
+A patient identity-resolution service (an Enterprise Master Patient Index) with a
+hand-written C++ matching engine, a real stewardship console for the humans who
+adjudicate duplicates, a Node + Postgres API, and a Hadoop/Hive analytics layer over
+a synthetic patient population.
 
-PatientDedupe is an Enterprise Master Patient Index (EMPI), also called a
-record-linkage system. In healthcare the same real person often ends up with two or
-more separate records because their details were typed slightly differently each
-time (Bob vs Robert, a transposed digit in a date of birth, a changed last name).
-That is dangerous, because an allergy or a test result can get filed under the wrong
-record. PatientDedupe finds those likely-duplicate records, scores how confident it
-is that two records are the same person, auto-merges the obvious ones, and sends the
-uncertain ones to a human to review with a clear explanation of why they were
-flagged.
+In healthcare the same person routinely ends up with more than one record, because
+details get entered differently each time (Bob vs Robert, a transposed digit in a
+date of birth, a surname that changed after marriage) and there is no national
+patient identifier. That is dangerous: an allergy or a lab result can sit under the
+wrong record. PatientDedupe scores how likely two records are the same person,
+auto-merges the clear cases, and routes the uncertain ones to a human steward with a
+field-by-field explanation they can audit.
 
 ## Live demo
 
-The matching playground runs the real C++ engine, compiled to WebAssembly, entirely
-in your browser. Edit either record and the score updates live with a field-by-field
-breakdown. Nothing you type leaves the page.
+**[Open the live console](https://huggingface.co/spaces/Sehajgill/PatientDedupe)** -
+a real, working product on synthetic data (it sleeps when idle and wakes on the first
+visit).
 
-**[Open the live playground](https://huggingface.co/spaces/Sehajgill/PatientDedupe)**
+![Review workspace](assets/screenshots/app-queue.png)
 
-![Matching playground, a likely match](assets/screenshots/playground-desktop.png)
+The review queue and side-by-side adjudication screen: confidence band, field-by-field
+agreement and conflict, and Merge / Not a match / Need info.
 
-A clear non-match, showing how the per-field reasons and the confidence meter respond:
+## The product: a data steward's workspace
 
-![Matching playground, not a match](assets/screenshots/playground-nomatch.png)
+The console is the product; the matching engine is the service underneath it.
 
-## The problem
+- **Dashboard** - the health of the patient index: pending review (the lead number),
+  unique patients, source records, auto-merge-eligible count, duplicate rate, and
+  charts for score distribution, queue by confidence band, and records by source
+  system.
+- **Review queue + adjudication** - a ranked queue (defaulting to the cases that need
+  a human), with a side-by-side field diff (green agree, amber partial, red conflict),
+  a reason-aware recommendation, a golden-record survivorship preview on merge, and
+  decide-and-advance.
+- **Audit log** - who decided what, when, and why. No merge is anonymous.
+- **Search**, and a **Sandbox** that runs the engine live in your browser.
 
-In US healthcare the same person routinely ends up with more than one medical record.
-Details get entered differently on each visit (Bob instead of Robert, a transposed
-digit in a date of birth, a surname that changed after marriage), and there is no
-national patient identifier to tie those records back together. The result is a
-fragmented view of a single human spread across several record numbers.
+![Dashboard](assets/screenshots/app-dashboard.png)
 
-That is not just untidy, it is dangerous. An allergy, an active medication, or a
-critical lab result can sit in one record while the clinician is looking at the
-other. The job of an Enterprise Master Patient Index is to find those duplicates,
-decide with calibrated confidence when two records are the same person, merge the
-clear cases automatically, and route the uncertain ones to a human with an
-explanation they can audit.
+It is responsive down to small phone screens, including the Fold cover display:
 
-## Why it matters now
+![Mobile review](assets/screenshots/app-fold-review.png)
 
-Patient matching is a recognized patient-safety and cost problem, and it sits
-squarely inside current US interoperability rules. CMS-0057-F, the federal
-Interoperability and Prior Authorization rule, has operational provisions that began
-on January 1, 2026 and requires four FHIR APIs to be live by January 1, 2027. You
-cannot safely exchange a patient's record between systems if you cannot reliably tell
-which patient it belongs to. These are industry facts that motivate the project, not
-numbers this project measures itself.
+## Why it matters, and who it is for
 
-## Why it was built
+Patient matching is a recognized patient-safety and cost problem, and it sits inside
+current US interoperability rules: CMS-0057-F has operational provisions that began on
+January 1, 2026 and requires four FHIR APIs to be live by January 1, 2027. You cannot
+safely exchange a record between systems if you cannot tell which patient it belongs
+to. (Industry context that motivates the project, not numbers measured here.)
 
-PatientDedupe is a portfolio project with a real engineering spine. It exists to
-demonstrate, end to end, a believable healthcare data system and to back it with
-honest measurements rather than claims. It deliberately exercises four core skills in
-one product: C++ for a performance-critical matching core, SQL for blocking, storage,
-and audit, Java for a standard FHIR API, and Hadoop with Hive for population-scale
-analytics. It runs entirely on synthetic data so the whole thing can be open,
-reproducible, and free of privacy or credentialing friction.
+It is built for Priya, a senior integration engineer whose recurring nightmare is
+duplicate-patient chaos during admission surges. It is also a portfolio project that
+exercises four core skills in one product: C++ (the matching core), SQL (storage,
+blocking, audit, and the Hive analytics), Java (a planned FHIR API), and Hadoop
+(planned population analytics).
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A["Synthea<br/>synthetic patients"] --> B["Postgres<br/>match fields + blocking keys"]
-    B --> C["SQL blocking layer<br/>phonetic keys, partitioning, indexes"]
-    C -->|candidate pairs| D["C++ matching engine<br/>Jaro-Winkler, Levenshtein,<br/>Damerau-Levenshtein, DOB logic,<br/>nickname table, weighted score"]
-    D --> W["WebAssembly build<br/>(Emscripten)"]
-    W --> P["Browser playground<br/>live, no server"]
-    D --> E["Match results, scores,<br/>and audit trail (SQL)"]
-    E --> F["Java FHIR service<br/>HAPI, Patient/&#36;match"]
-    E --> G["Web review console<br/>steward merges / rejects"]
-    E --> H["Hadoop / Hive analytics<br/>duplicate rate by site"]
+    A["Synthea synthetic patients"] --> DB[("Postgres / Supabase")]
+    E["C++ matching engine"] -->|"Emscripten"| W["WebAssembly module"]
+    W --> API["Node + Hono API"]
+    W --> SB["Browser sandbox"]
+    DB <--> API
+    API --> UI["React stewardship console"]
+    UI --> D1["Dashboard"]
+    UI --> D2["Review queue + adjudication"]
+    UI --> D3["Audit log"]
+    API -. planned .-> FHIR["Java FHIR Patient/$match"]
+    DB -. planned .-> HV["Hadoop / Hive analytics"]
 
-    classDef core fill:#eef0fe,stroke:#4f46e5,color:#1e1b4b;
-    classDef data fill:#eafaf1,stroke:#15a34a,color:#064e3b;
-    class D core;
-    class B,E data;
+    classDef core fill:#e3f2ef,stroke:#0e7c7b,color:#0a4f4e;
+    classDef data fill:#e7f3ea,stroke:#15803d,color:#14532d;
+    class E,W core;
+    class DB,API data;
 ```
 
-The same C++ engine is used three ways: native (tests and benchmarks), as a
-WebAssembly module (the live playground), and, in later phases, behind the Java FHIR
-API. There is one implementation of the matching logic, never a re-implementation.
+The same C++ engine is compiled to WebAssembly and used in three places: the browser
+sandbox, the Node API (so the server and the client score identically), and the
+native build used for tests and benchmarks. The live demo runs as a Hugging Face
+Docker Space serving the API and the built frontend, with Postgres on Supabase.
 
-## Phase 1 results (measured here)
+## Results (measured here)
 
-Single-threaded, on this development machine, scored with the full per-field reason
-breakdown produced for every pair.
+Single-threaded, on a development machine, scored with the full per-field reason
+breakdown for every pair. Absolute throughput varies with machine load.
 
 | Metric | Result |
 | --- | --- |
-| C++ engine throughput | about 209,000 candidate pairs/sec |
-| Python baseline throughput | about 6,400 pairs/sec |
-| Speedup | roughly 33x, and the C++ side also builds the reasons the baseline skips |
-| Precision at the auto-merge threshold (0.90) | 1.000 (zero false merges) |
-| Recall at the auto-merge threshold (0.90) | 0.983 |
-| Recall at the review threshold (0.70) | 1.000 (every true duplicate is caught) |
+| C++ engine throughput | about 140,000 to 200,000 candidate pairs/sec |
+| Python baseline throughput | a few thousand pairs/sec |
+| Speedup | roughly 30x or more, and the C++ side also builds the reasons the baseline skips |
+| Precision at the auto-merge threshold (0.95) | 1.000 (zero false merges) |
+| Recall at the auto-merge threshold (0.95) | 0.847 |
+| Precision and recall at the review threshold (0.80) | 1.000 and 0.997 |
 
 Correctness is measured against ground truth: the duplicates are manufactured from
-real Synthea patients by `tools/duplicate_injector.py`, which records exactly which
-messy copy came from which original. At the auto-merge threshold there are no false
-merges, which is the safety-critical number, and at the review threshold every real
-duplicate is surfaced for a human to see.
+real Synthea patients by a duplicate injector that records which messy copy came from
+which original. At the auto-merge threshold there are zero false merges, the
+safety-critical number, and at the review threshold nearly every real duplicate is
+surfaced for a human, with no false positives.
 
 ## How the matcher works
 
-- Three string metrics, implemented by hand in C++: Jaro-Winkler (good for names),
-  Levenshtein, and Damerau-Levenshtein (which counts an adjacent transposition, like
-  a fat-fingered date, as a single edit).
-- Date-of-birth logic that treats typos and transposed digits as partial, not total,
-  mismatches, and floors the score when the birth year matches.
-- A small nickname table so "Bob" and "Robert" resolve to the same person, which is
-  the exact failure mode the project is named for.
-- A tunable weighted score that always returns a per-field reason breakdown, so every
-  decision is explainable and auditable.
-- Thresholds: at or above 0.90 a pair is confident enough to auto-merge, between 0.70
-  and 0.90 it goes to a human reviewer, and below 0.70 it is treated as two different
-  people.
+- Three string metrics, hand-written in C++: Jaro-Winkler (good for names),
+  Levenshtein, and Damerau-Levenshtein (which counts an adjacent digit swap, like a
+  fat-fingered date, as a single edit).
+- Date-of-birth logic that treats typos and transposed digits as partial rather than
+  total mismatches, and a nickname table so Bob and Robert resolve to the same person.
+- A tunable weighted score that always returns a per-field reason breakdown.
+- Non-overlapping bands: at or above 0.95 a pair is confident enough to auto-merge,
+  0.80 to 0.95 goes to a human, and below 0.80 is treated as different people.
+
+## Tech stack
+
+Versions confirmed current as of 2026-06-26.
+
+| Area | Choice | Version |
+| --- | --- | --- |
+| Matching core | GCC (MinGW-w64, UCRT) | g++ 16.1.0 |
+| C++ build / tests | CMake / Catch2 | 4.3.3 / 3.15.1 |
+| WebAssembly | Emscripten | 6.0.1 |
+| Synthetic data | Synthea | v4.0.0 |
+| API | Node + Hono + postgres | Hono 4.12, postgres 3.4 |
+| Frontend | Vite + React + TypeScript + Tailwind v4 | Vite 8.1, React 19 |
+| UI libraries | Radix, TanStack Table + Query, Recharts, lucide, sonner | current |
+| End-to-end and screenshots | Playwright | 1.61.0 |
+| Database | Postgres (Supabase) | 17 |
+| Deploy | Hugging Face Docker Space | - |
+| FHIR API (planned) | Java + HAPI FHIR | - |
+| Analytics (planned) | Apache Hadoop + Hive | - |
 
 ## Project status
 
-- [x] **Phase 0 - Setup and understanding.** Toolchain, Synthea v4.0.0 data, and a
-  live deploy pipeline.
-- [x] **Phase 1 - C++ matching core.** Hand-rolled metrics, a weighted explainable
-  score, unit tests, a benchmark against a Python baseline, precision and recall
-  against ground truth, and an in-browser WebAssembly playground.
-- [ ] **Phase 2 - SQL blocking and storage.** Phonetic blocking keys, partitioning,
-  indexing, and a full audit trail.
-- [ ] **Phase 3 - Java FHIR API.** A HAPI FHIR `Patient/$match` endpoint.
-- [ ] **Phase 4 - Review console.** A polished stewardship UI with Playwright tests.
-- [ ] **Phase 5 - Hadoop / Hive analytics.** Duplicate rate by site, at two scales.
+- [x] **Phase 0** - Setup, toolchain, Synthea data, live deploy pipeline.
+- [x] **Phase 1** - C++ matching core: hand-rolled metrics, a weighted explainable
+  score, unit tests, a benchmark vs a Python baseline, and precision/recall.
+- [x] **Product** - the stewardship console (dashboard, review queue, audit, search,
+  sandbox) on a Node + Postgres API, deployed live, with the engine running as
+  WebAssembly on both tiers.
+- [ ] **Phase 2** - SQL blocking layer at population scale.
+- [ ] **Phase 3** - Java HAPI FHIR `Patient/$match` facade.
+- [ ] **Phase 5** - Hadoop / Hive duplicate-rate-by-site analytics at two scales.
 
 ## Build and run
 
@@ -143,58 +156,46 @@ The C++ engine, tests, benchmark, and evaluator:
 cd engine
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/pdd_tests      # unit tests
-./build/pdd_bench      # throughput benchmark
-./build/pdd_eval ../data/pairs.csv   # precision and recall
+./build/pdd_tests
+./build/pdd_bench
+./build/pdd_eval ../data/pairs.csv
 ```
 
-The evaluation set and the Python baseline:
+The API and database (local):
 
 ```
-python tools/duplicate_injector.py            # writes data/pairs.csv
-python tools/baseline/baseline.py             # Python throughput, for comparison
+cd backend
+docker compose up -d           # local Postgres
+cp .env.example .env           # or point DATABASE_URL at Supabase
+npm install
+npm run migrate && npm run seed
+npm run dev                    # API on :8787
 ```
 
-The frontend playground:
+The frontend:
 
 ```
 cd frontend
 npm install
-npm run dev       # local dev server
-npm run build     # production build into frontend/dist
+npm run dev                    # console on :5173, proxies /api to :8787
 ```
 
-The WebAssembly module (`frontend/src/wasm/matcher.js`) is built from the C++ engine
-with Emscripten and committed so the frontend builds without the C++ toolchain.
-
-## Stack
-
-Versions confirmed current as of 2026-06-26.
-
-| Area | Choice | Version |
-| --- | --- | --- |
-| Matching core | GCC (MinGW-w64, UCRT) | g++ 16.1.0 |
-| Build system | CMake | 4.3.3 |
-| C++ unit tests | Catch2 | 3.15.1 |
-| WebAssembly | Emscripten | 6.0.1 |
-| Synthetic data | Synthea | v4.0.0 |
-| Frontend | Vite + React + TypeScript | Vite 8.1, React 19 |
-| End-to-end and screenshots | Playwright | 1.61.0 |
-| FHIR API (Phase 3) | Java + HAPI FHIR | JDK 26, HAPI 8.x |
-| Analytics (Phase 5) | Apache Hadoop + Hive | to be pinned |
+The whole thing builds into one container via the `Dockerfile` (it compiles the wasm
+from source with Emscripten, builds the frontend, and runs the API), which is how the
+Hugging Face Space is deployed on every push.
 
 ## Synthetic data and responsible use
 
 No real patient data is ever used. All records come from
-[Synthea](https://github.com/synthetichealth/synthea), an open-source synthetic
-patient generator, which avoids HIPAA and credentialing friction and gives ground
-truth to measure accuracy against. Any future LLM use stays strictly administrative
-and human-in-the-loop, never autonomous clinical decision-making.
+[Synthea](https://github.com/synthetichealth/synthea), which avoids HIPAA and
+credentialing friction and gives ground truth to measure accuracy against. Any future
+LLM use stays strictly administrative and human-in-the-loop, never autonomous clinical
+decision-making.
 
 ## Benchmark honesty
 
 Published research numbers are motivation only and are kept separate from anything
-this project measures itself. For the matcher we report both correctness (precision
+this project measures itself. The matcher is reported on both correctness (precision
 and recall against Synthea's known identities) and speed (pairs per second versus a
-Python baseline). All Phase 1 numbers above were measured on a single development
-machine and will vary on other hardware.
+Python baseline). All numbers above were measured on a single development machine and
+vary with hardware and load.
