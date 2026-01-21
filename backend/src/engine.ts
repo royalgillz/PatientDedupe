@@ -10,6 +10,7 @@ function load() {
   return modulePromise;
 }
 
+// @spec API-009
 export async function scorePair(a: PatientRecord, b: PatientRecord): Promise<MatchResult> {
   const mod = await load();
   return JSON.parse(mod.matchRecordsJson(a, b)) as MatchResult;

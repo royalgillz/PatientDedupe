@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight, Check, HelpCircle, Inbox, Sparkles, X } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronLeft, HelpCircle, Inbox, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfidenceBadge, simTone } from "@/components/confidence";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Select, Textarea } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, type Band, type FieldScore, type Pair, type SourceRecord } from "@/lib/api";
-import { FIELD_LABELS, formatDateTime, relativeTime } from "@/lib/format";
+import { FIELD_LABELS, formatDate, formatDateTime, relativeTime } from "@/lib/format";
 import { useReviewer } from "@/lib/reviewer";
 import { cn } from "@/lib/utils";
 
@@ -62,15 +62,18 @@ function ComparisonRow({ field, a, b, fs }: { field: string; a: SourceRecord; b:
   const equal = av.toLowerCase() === bv.toLowerCase();
   const tone = fs ? simTone(fs.similarity) : equal ? "match" : "miss";
   const informational = !fs; // mrn / source_system are expected to differ
-  const mono = field === "dob" || field === "zip" || field === "mrn";
+  const mono = field === "zip" || field === "mrn";
+  const show = (v: string) => (!v ? "-" : field === "dob" ? formatDate(v) : v);
 
   return (
     <div className="grid grid-cols-[130px_1fr_1fr_110px] items-center gap-3 border-b py-2.5 last:border-b-0">
       <div className="flex items-center gap-2 text-[12.5px] text-ink-3">
-        {!informational && <span className={cn("size-1.5 rounded-full", TONE_FILL[tone])} />}
+        <span className="flex w-1.5 shrink-0 justify-center">
+          {!informational && <span className={cn("size-1.5 rounded-full", TONE_FILL[tone])} />}
+        </span>
         {FIELD_LABELS[field] ?? field}
       </div>
-      <div className={cn("text-[13.5px] text-ink", mono && "tnum font-mono text-[12.5px]")}>{av || "-"}</div>
+      <div className={cn("text-[13.5px] text-ink", mono && "tnum font-mono text-[12.5px]")}>{show(av)}</div>
       <div
         className={cn(
           "text-[13.5px]",
@@ -78,16 +81,16 @@ function ComparisonRow({ field, a, b, fs }: { field: string; a: SourceRecord; b:
           informational ? "text-ink" : equal ? "text-ink" : cn("font-medium", TONE_TEXT[tone]),
         )}
       >
-        {bv || "-"}
+        {show(bv)}
       </div>
-      <div>
+      <div className="flex items-center justify-end gap-2">
         {fs ? (
-          <div className="flex items-center gap-2">
+          <>
             <div className="h-1.5 w-12 rounded-full bg-muted">
               <div className={cn("h-full rounded-full", TONE_FILL[tone])} style={{ width: `${Math.round(fs.similarity * 100)}%` }} />
             </div>
-            <span className={cn("tnum text-[12px] font-medium", TONE_TEXT[tone])}>{fs.similarity.toFixed(2)}</span>
-          </div>
+            <span className={cn("tnum w-8 text-right text-[12px] font-medium", TONE_TEXT[tone])}>{fs.similarity.toFixed(2)}</span>
+          </>
         ) : (
           <span className="text-[12px] text-ink-3">context</span>
         )}
@@ -180,7 +183,7 @@ function DecisionDialog({
         <div className="mt-5 flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
-            variant={action === "merge" ? "success" : action === "not_a_match" ? "danger" : "brand"}
+            variant="brand"
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending}
           >
@@ -192,23 +195,29 @@ function DecisionDialog({
   );
 }
 
-function ReviewDetail({ pair, onDecided }: { pair: Pair; onDecided: () => void }) {
+function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () => void; onBack: () => void }) {
   const { current } = useReviewer();
   const [action, setAction] = useState<Action | null>(null);
   const reasonsByField = useMemo(() => Object.fromEntries(pair.reasons.map((r) => [r.field, r])), [pair.reasons]);
   const { agree, conflict } = whySummary(pair.reasons);
 
+  const conflictText = conflict.length
+    ? ` ${conflict.join(" and ")} ${conflict.length > 1 ? "differ" : "differs"}.`
+    : "";
   const rec: Record<Band, { text: string; tone: "match" | "review" | "miss" }> = {
     match: { text: "Recommended: merge. High confidence these are the same person.", tone: "match" },
-    review: { text: "Recommended: review carefully. Some fields agree, some conflict.", tone: "review" },
-    "no-match": { text: "Recommended: likely not a match. Confirm before any merge.", tone: "miss" },
+    review: { text: `Likely the same person.${conflictText} Confirm before merging.`, tone: "review" },
+    "no-match": { text: `Likely not a match.${conflictText} Confirm before any merge.`, tone: "miss" },
   };
   const r = rec[pair.band];
 
   return (
     <div className="flex h-full flex-col">
       {/* Zone 1: context header */}
-      <div className="sticky top-0 z-10 border-b bg-surface/90 px-6 py-4 backdrop-blur">
+      <div className="sticky top-0 z-10 border-b bg-surface/90 px-4 py-4 backdrop-blur md:px-6">
+        <button className="mb-2 flex items-center gap-1 text-[13px] font-medium text-ink-2 hover:text-ink md:hidden" onClick={onBack}>
+          <ChevronLeft className="size-4" /> Back to queue
+        </button>
         <div className="flex flex-wrap items-center gap-3">
           <ConfidenceBadge score={pair.score} band={pair.band} />
           <span className="tnum text-[12px] text-ink-3">TASK-{String(pair.id).padStart(4, "0")}</span>
@@ -225,7 +234,7 @@ function ReviewDetail({ pair, onDecided }: { pair: Pair; onDecided: () => void }
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-5 md:px-6">
         <Tabs defaultValue="comparison">
           <TabsList>
             <TabsTrigger value="comparison">Comparison</TabsTrigger>
@@ -234,17 +243,19 @@ function ReviewDetail({ pair, onDecided }: { pair: Pair; onDecided: () => void }
           </TabsList>
 
           <TabsContent value="comparison">
-            <div className="rounded-md border">
-              <div className="grid grid-cols-[130px_1fr_1fr_110px] gap-3 border-b bg-app px-0 py-2 pl-0 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
-                <div className="pl-3">Field</div>
-                <div>Record A</div>
-                <div>Record B</div>
-                <div>Similarity</div>
-              </div>
-              <div className="px-3">
-                {COMPARE_FIELDS.map((f) => (
-                  <ComparisonRow key={f} field={f} a={pair.record_a} b={pair.record_b} fs={reasonsByField[f]} />
-                ))}
+            <div className="overflow-x-auto">
+              <div className="min-w-[540px] rounded-md border">
+                <div className="grid grid-cols-[130px_1fr_1fr_110px] gap-3 border-b bg-app py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+                  <div className="pl-3">Field</div>
+                  <div>Record A</div>
+                  <div>Record B</div>
+                  <div className="text-right">Similarity</div>
+                </div>
+                <div className="px-3">
+                  {COMPARE_FIELDS.map((f) => (
+                    <ComparisonRow key={f} field={f} a={pair.record_a} b={pair.record_b} fs={reasonsByField[f]} />
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -299,7 +310,11 @@ function ReviewDetail({ pair, onDecided }: { pair: Pair; onDecided: () => void }
                     {COMPARE_FIELDS.map((f) => (
                       <div key={f} className="grid grid-cols-[110px_1fr] gap-2 px-3 py-1.5">
                         <dt className="text-[12px] text-ink-3">{FIELD_LABELS[f] ?? f}</dt>
-                        <dd className="text-[13px] text-ink">{(rr as unknown as Record<string, string>)[f] || "-"}</dd>
+                        <dd className="text-[13px] text-ink">
+                          {f === "dob"
+                            ? formatDate((rr as unknown as Record<string, string>)[f])
+                            : (rr as unknown as Record<string, string>)[f] || "-"}
+                        </dd>
                       </div>
                     ))}
                   </dl>
@@ -311,7 +326,7 @@ function ReviewDetail({ pair, onDecided }: { pair: Pair; onDecided: () => void }
       </div>
 
       {/* Zone 3: action bar */}
-      <div className="flex items-center gap-2 border-t bg-surface px-6 py-3">
+      <div className="flex items-center gap-2 border-t bg-surface px-4 py-3 md:px-6">
         {!current && <span className="text-[12px] text-miss">Select a reviewer to act</span>}
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" disabled={!current} onClick={() => setAction("need_info")}>
@@ -320,7 +335,7 @@ function ReviewDetail({ pair, onDecided }: { pair: Pair; onDecided: () => void }
           <Button variant="outline" disabled={!current} onClick={() => setAction("not_a_match")}>
             <X className="size-4" /> Not a match
           </Button>
-          <Button variant="success" disabled={!current} onClick={() => setAction("merge")}>
+          <Button variant="brand" disabled={!current} onClick={() => setAction("merge")}>
             <Check className="size-4" /> Merge
           </Button>
         </div>
@@ -331,6 +346,7 @@ function ReviewDetail({ pair, onDecided }: { pair: Pair; onDecided: () => void }
   );
 }
 
+// @spec CONSOLE-001, CONSOLE-002, CONSOLE-003, CONSOLE-004, CONSOLE-005, CONSOLE-008
 export default function Workspace() {
   const [band, setBand] = useState("review");
   const [q, setQ] = useState("");
@@ -342,10 +358,15 @@ export default function Workspace() {
   });
 
   useEffect(() => {
-    if (queue.length && (selectedId == null || !queue.some((p) => p.id === selectedId))) {
-      setSelectedId(queue[0].id);
+    if (!queue.length) {
+      setSelectedId(null);
+      return;
     }
-    if (!queue.length) setSelectedId(null);
+    if (selectedId != null && queue.some((p) => p.id === selectedId)) return;
+    // Auto-open the first pair on desktop (two-pane). On phones, leave the list
+    // showing so the steward picks a pair before the detail takes over the screen.
+    const desktop = window.matchMedia("(min-width: 768px)").matches;
+    setSelectedId(desktop ? queue[0].id : null);
   }, [queue, selectedId]);
 
   const selected = queue.find((p) => p.id === selectedId) ?? null;
@@ -357,13 +378,16 @@ export default function Workspace() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col md:flex-row">
       {/* Left: queue rail */}
-      <div className="flex w-[380px] shrink-0 flex-col border-r bg-surface">
+      <div className={cn("w-full flex-col border-r bg-surface md:w-[380px] md:shrink-0", selected ? "hidden md:flex" : "flex")}>
         <div className="space-y-2.5 border-b px-4 py-3">
           <div className="flex items-center justify-between">
             <h2 className="text-[14px] font-semibold text-ink">Review queue</h2>
-            <span className="tnum text-[12px] text-ink-3">{queue.length} pending</span>
+            <span className="tnum text-[12px] text-ink-3">
+              {queue.length}{" "}
+              {band === "review" ? "need review" : band === "match" ? "likely match" : band === "no-match" ? "unlikely" : "pending"}
+            </span>
           </div>
           <div className="flex gap-2">
             <input
@@ -399,9 +423,9 @@ export default function Workspace() {
       </div>
 
       {/* Right: detail */}
-      <div className="min-w-0 flex-1">
+      <div className={cn("min-w-0 flex-1", selected ? "block" : "hidden md:block")}>
         {selected ? (
-          <ReviewDetail key={selected.id} pair={selected} onDecided={advance} />
+          <ReviewDetail key={selected.id} pair={selected} onDecided={advance} onBack={() => setSelectedId(null)} />
         ) : (
           <div className="grid h-full place-items-center text-center">
             <div className="text-ink-3">

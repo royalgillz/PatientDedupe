@@ -16,9 +16,9 @@ import type { PatientRecord } from "./types.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const PATIENTS = resolve(here, "../../tools/synthea/output/csv/patients.csv");
 
-const N_BASE = 600;
-const N_DUPES = 200;
-const N_NEGATIVES = 180;
+const N_BASE = 820;
+const N_DUPES = 240;
+const N_NEGATIVES = 160;
 
 const SOURCE_SYSTEMS = ["Epic ADT", "Cerner", "Lab Feed", "Registration", "Radiology"];
 const NICKNAMES: Record<string, string> = {
@@ -48,6 +48,14 @@ function rand() {
 }
 const randInt = (n: number) => Math.floor(rand() * n);
 const pick = <T,>(arr: T[]) => arr[randInt(arr.length)];
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randInt(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 function parseCsv(text: string): Record<string, string>[] {
   const rows: string[][] = [];
@@ -267,14 +275,43 @@ async function main() {
     .filter((r) => !r.is_true_duplicate && r.score >= 0.62 && r.score <= 0.93)
     .slice(0, N_NEGATIVES);
   const worth = [...dupKept, ...negKept];
+  const pairIds: number[] = [];
   for (let i = 0; i < worth.length; i += chunk) {
-    await sql`insert into candidate_pairs ${sql(worth.slice(i, i + chunk))}`;
+    const ins = await sql`insert into candidate_pairs ${sql(worth.slice(i, i + chunk))} returning id`;
+    for (const r of ins) pairIds.push(r.id as number);
+  }
+
+  // Backfill a realistic decision history so the audit log and dashboard reflect a
+  // queue that has been worked, rather than looking like an empty fixture.
+  console.log("backfilling decision history...");
+  const revs = await sql`select id, name from reviewers order by id`;
+  const REASONS: Record<string, string[]> = {
+    merged: ["Same person, confident", "Matched on identifiers", "Reconciled conflicts"],
+    not_a_match: ["Different people", "Same name, different person", "Insufficient similarity"],
+    need_info: ["Awaiting identifier", "Conflicting critical field", "Escalated to lead"],
+  };
+  const NOTES = ["", "", "", "Confirmed against prior visit.", "Address verified with patient.",
+    "Flagged to registration desk.", "DOB mismatch unresolved.", "Matches insurance record."];
+  const history = shuffle(pairIds.map((_, i) => i)).slice(0, Math.min(34, worth.length));
+  for (const k of history) {
+    const w = worth[k];
+    const action = w.score >= 0.92 ? "merged" : w.score < 0.82 ? "not_a_match"
+      : pick(["merged", "not_a_match", "need_info"]);
+    const reviewer = pick(revs);
+    const ts = new Date(Date.now() - (8 + randInt(13000)) * 60000).toISOString();
+    const reason = pick(REASONS[action]);
+    const note = action === "merged" ? pick(["", "", "Confirmed against prior visit."]) : pick(NOTES);
+    await sql`update candidate_pairs set status = ${action}, decided_at = ${ts},
+      decided_by = ${reviewer.id}, reason_code = ${reason}, note = ${note} where id = ${pairIds[k]}`;
+    await sql`insert into audit_log (ts, actor, action, pair_id, record_a_id, record_b_id, score, reason_code, note, details)
+      values (${ts}, ${reviewer.name}, ${action === "merged" ? "merge" : action}, ${pairIds[k]},
+              ${w.record_a_id}, ${w.record_b_id}, ${w.score}, ${reason}, ${note || null}, ${sql.json({ band: w.band })})`;
   }
 
   const bands = worth.reduce<Record<string, number>>((m, r) => {
     m[r.band] = (m[r.band] ?? 0) + 1; return m;
   }, {});
-  console.log(`seeded ${records.length} records, ${worth.length} review tasks`, bands);
+  console.log(`seeded ${records.length} records, ${worth.length} pairs, ${history.length} historical decisions`, bands);
   await sql.end();
 }
 

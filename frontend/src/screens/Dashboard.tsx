@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Inbox, Users, Database, GitMerge } from "lucide-react";
-import type { ElementType } from "react";
+import { ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   Bar,
@@ -34,24 +33,22 @@ function bucketColor(bucket: number) {
   return BAND_COLOR["no-match"];
 }
 
-function Stat({ label, value, sub, icon: Icon }: { label: string; value: string; sub?: string; icon: ElementType }) {
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 text-ink-3">
-        <Icon className="size-4" />
-        <span className="text-[12px] font-medium">{label}</span>
-      </div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{label}</div>
       <div className="tnum mt-2 text-2xl font-semibold tracking-tight text-ink">{value}</div>
       {sub && <div className="mt-0.5 text-[12px] text-ink-3">{sub}</div>}
     </Card>
   );
 }
 
+// @spec CONSOLE-006
 export default function Dashboard() {
   const { data, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: api.dashboard });
 
   return (
-    <div className="mx-auto max-w-[1120px] space-y-6 p-6">
+    <div className="mx-auto max-w-[1120px] space-y-6 p-4 md:p-6">
       <div>
         <h1 className="text-[22px] font-semibold tracking-tight text-ink">Patient index overview</h1>
         <p className="mt-1 text-sm text-ink-2">
@@ -67,27 +64,39 @@ export default function Dashboard() {
         <>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* the one trusted number */}
-            <Card className="relative overflow-hidden p-5 lg:row-span-1">
-              <div className="flex items-center gap-2 text-brand-ink">
-                <Inbox className="size-4" />
-                <span className="text-[12px] font-semibold uppercase tracking-wide">Pending review</span>
+            <Card className="flex flex-col p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-brand-ink">Pending review</div>
+              <div className="tnum mt-2 text-5xl font-semibold tracking-tight text-ink">
+                {data.pending.toLocaleString()}
               </div>
-              <div className="tnum mt-3 text-5xl font-semibold tracking-tight text-ink">{data.pending}</div>
               <div className="mt-1 text-[13px] text-ink-2">candidate pairs awaiting a steward</div>
+              <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-[12.5px]">
+                <span className="flex items-center gap-1.5 text-ink-2">
+                  <span className="size-2 rounded-full" style={{ background: BAND_COLOR.review }} />
+                  <span className="tnum font-medium text-ink">
+                    {(data.byBand.find((b) => b.band === "review")?.n ?? 0).toLocaleString()}
+                  </span>{" "}
+                  need review
+                </span>
+                <span className="flex items-center gap-1.5 text-ink-2">
+                  <span className="size-2 rounded-full" style={{ background: BAND_COLOR.match }} />
+                  <span className="tnum font-medium text-ink">{data.autoMergeEligible.toLocaleString()}</span>{" "}
+                  auto-merge ready
+                </span>
+              </div>
               <Link
                 to="/queue"
-                className="mt-4 inline-flex items-center gap-1 text-[13px] font-medium text-brand hover:text-brand-hover"
+                className="mt-auto inline-flex items-center gap-1 pt-5 text-[13px] font-medium text-brand hover:text-brand-hover"
               >
                 Open the review queue <ArrowUpRight className="size-3.5" />
               </Link>
-              <div className="pointer-events-none absolute -right-6 -top-6 size-28 rounded-full bg-brand-subtle opacity-60" />
             </Card>
 
             <div className="grid grid-cols-2 gap-4 lg:col-span-2">
-              <Stat label="Unique patients" value={data.persons.toLocaleString()} sub="distinct people" icon={Users} />
-              <Stat label="Source records" value={data.records.toLocaleString()} sub="across all systems" icon={Database} />
-              <Stat label="Auto-merge eligible" value={data.autoMergeEligible.toLocaleString()} sub="score at or above 0.90" icon={GitMerge} />
-              <Stat label="Est. duplicate rate" value={pct(data.duplicateRate)} sub="records beyond unique people" icon={Users} />
+              <Stat label="Unique patients" value={data.persons.toLocaleString()} sub="distinct people" />
+              <Stat label="Source records" value={data.records.toLocaleString()} sub="across all systems" />
+              <Stat label="Auto-merge eligible" value={data.autoMergeEligible.toLocaleString()} sub="score at or above 0.95" />
+              <Stat label="Est. duplicate rate" value={pct(data.duplicateRate)} sub="records beyond unique people" />
             </div>
           </div>
 

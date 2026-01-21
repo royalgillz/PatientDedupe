@@ -46,10 +46,11 @@ struct MatchResult {
     std::vector<FieldScore> fields;
 };
 
-// Decision thresholds. At or above match: confident enough to auto-merge. Between
-// review and match: send to a human. Below review: treat as different people.
-constexpr double kMatchThreshold = 0.90;
-constexpr double kReviewThreshold = 0.70;
+// Decision thresholds, kept non-overlapping so the bands never contradict each other.
+// At or above match: confident enough to auto-merge. Between review and match: send to
+// a human. Below review: treat as different people.
+constexpr double kMatchThreshold = 0.95;
+constexpr double kReviewThreshold = 0.80;
 
 // Score one candidate pair. Pure and side-effect free, so it is cheap to call
 // millions of times in a benchmark and safe to expose through WebAssembly.

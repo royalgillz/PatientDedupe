@@ -4,6 +4,7 @@ import { ScrollText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { api, type AuditEntry } from "@/lib/api";
 import { formatDateTime, relativeTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const ACTION_TONE = { merge: "match", not_a_match: "miss", need_info: "review" } as const;
 const ACTION_LABEL: Record<string, string> = {
@@ -49,24 +50,31 @@ const columns = [
   }),
 ];
 
+// @spec CONSOLE-007
 export default function Audit() {
   const { data = [], isLoading } = useQuery({ queryKey: ["audit"], queryFn: api.audit });
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
 
   return (
-    <div className="mx-auto max-w-[1120px] space-y-5 p-6">
+    <div className="mx-auto max-w-[1040px] space-y-5 p-4 md:p-6">
       <div>
         <h1 className="text-[22px] font-semibold tracking-tight text-ink">Audit log</h1>
         <p className="mt-1 text-sm text-ink-2">Every steward decision, who made it, and why. This is the trust surface.</p>
       </div>
 
-      <div className="overflow-hidden rounded-card border bg-surface shadow-[0_1px_2px_rgba(40,33,20,0.05)]">
-        <table className="w-full border-collapse text-[13px]">
+      <div className="overflow-x-auto rounded-card border bg-surface shadow-[0_1px_2px_rgba(40,33,20,0.05)]">
+        <table className="w-full min-w-[720px] border-collapse text-[13px]">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b bg-app">
                 {hg.headers.map((h) => (
-                  <th key={h.id} className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+                  <th
+                    key={h.id}
+                    className={cn(
+                      "px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3",
+                      h.column.id === "score" && "text-right",
+                    )}
+                  >
                     {flexRender(h.column.columnDef.header, h.getContext())}
                   </th>
                 ))}
@@ -87,7 +95,10 @@ export default function Audit() {
               table.getRowModel().rows.map((row) => (
                 <tr key={row.id} className="border-b transition-colors last:border-0 hover:bg-subtle">
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-2.5 align-top">
+                    <td
+                      key={cell.id}
+                      className={cn("px-4 py-2.5 align-top", cell.column.id === "score" && "text-right")}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

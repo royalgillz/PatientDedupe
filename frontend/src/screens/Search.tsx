@@ -17,7 +17,7 @@ export default function Search() {
   });
 
   return (
-    <div className="mx-auto max-w-[920px] space-y-5 p-6">
+    <div className="mx-auto max-w-[920px] space-y-5 p-4 md:p-6">
       <div>
         <h1 className="text-[22px] font-semibold tracking-tight text-ink">Search patients</h1>
         <p className="mt-1 text-sm text-ink-2">Find a record across every source system by name or medical record number.</p>
@@ -47,8 +47,8 @@ export default function Search() {
               <User className="size-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-medium text-ink">{r.first_name} {r.last_name}</div>
-              <div className="tnum text-[12px] text-ink-3">
+              <div className="truncate text-[14px] font-medium text-ink">{r.first_name} {r.last_name}</div>
+              <div className="truncate text-[12px] text-ink-3">
                 DOB {formatDate(r.dob)} · {r.gender} · {r.address}, {r.city} {r.zip}
               </div>
             </div>

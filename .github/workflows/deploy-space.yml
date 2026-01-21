@@ -11,6 +11,7 @@ on:
     paths:
       - "frontend/**"
       - "backend/**"
+      - "engine/**"
       - "Dockerfile"
       - ".dockerignore"
       - "deploy/README.space.md"

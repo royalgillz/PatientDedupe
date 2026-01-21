@@ -9,6 +9,7 @@ app.use("/api/*", cors());
 
 // Surface the real error to the client and the logs instead of a bare 500. The data
 // is synthetic, so a readable message is more helpful than hiding it.
+// @spec API-008
 app.onError((err, c) => {
   console.error("API error:", err);
   return c.json({ error: err.message }, 500);
@@ -22,6 +23,7 @@ app.get("/api/reviewers", async (c) => {
 });
 
 // Dashboard: a few trusted numbers plus the data the charts need.
+// @spec API-005
 app.get("/api/dashboard", async (c) => {
   const [totals] = await sql`
     select count(*)::int as records,
@@ -52,6 +54,7 @@ app.get("/api/dashboard", async (c) => {
 });
 
 // Review queue with filters: status, minimum score, band, free-text name/MRN.
+// @spec API-001
 app.get("/api/queue", async (c) => {
   const status = c.req.query("status") ?? "pending";
   const minScore = Number(c.req.query("minScore") ?? "0");
@@ -98,6 +101,7 @@ app.get("/api/pairs/:id", async (c) => {
 const FIELDS = ["first_name", "last_name", "dob", "gender", "address", "city", "state", "zip", "mrn"];
 
 // Record a steward decision. No anonymous merges: a valid reviewer is required.
+// @spec API-002, API-003, API-004
 app.post("/api/pairs/:id/decision", async (c) => {
   const id = Number(c.req.param("id"));
   const body = await c.req.json<{
@@ -157,12 +161,14 @@ app.post("/api/pairs/:id/decision", async (c) => {
   return c.json({ ok: true, status, golden });
 });
 
+// @spec API-006
 app.get("/api/audit", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? "200"), 500);
   const rows = await sql`select * from audit_log order by ts desc limit ${limit}`;
   return c.json(rows);
 });
 
+// @spec API-007
 app.get("/api/search", async (c) => {
   const q = c.req.query("q")?.trim();
   if (!q) return c.json([]);

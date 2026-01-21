@@ -55,7 +55,7 @@ export default function Sandbox() {
   const tone = result ? (result.label === "match" ? "match" : result.label === "review" ? "review" : "miss") : "review";
 
   return (
-    <div className="mx-auto max-w-[1000px] space-y-5 p-6">
+    <div className="mx-auto max-w-[1000px] space-y-5 p-4 md:p-6">
       <div>
         <h1 className="text-[22px] font-semibold tracking-tight text-ink">Matching sandbox</h1>
         <p className="mt-1 text-sm text-ink-2">
@@ -96,12 +96,12 @@ export default function Sandbox() {
             {result.fields.map((f) => {
               const t = simTone(f.similarity);
               return (
-                <div key={f.field} className="grid grid-cols-[140px_1fr_120px_44px] items-center gap-3 border-b py-2 last:border-0">
+                <div key={f.field} className="grid grid-cols-[110px_1fr_44px] items-center gap-3 border-b py-2 last:border-0 md:grid-cols-[140px_1fr_120px_44px]">
                   <span className="text-[13px] text-ink">{FIELD_LABELS[f.field] ?? f.field}</span>
                   <div className="h-1.5 rounded-full bg-muted">
                     <div className={cn("h-full rounded-full", TONE_FILL[t])} style={{ width: `${Math.round(f.similarity * 100)}%` }} />
                   </div>
-                  <span className="text-[12px] text-ink-3">{f.detail}</span>
+                  <span className="hidden text-[12px] text-ink-3 md:block">{f.detail}</span>
                   <span className={cn("tnum text-right text-[13px] font-medium", TONE_TEXT[t])}>{f.similarity.toFixed(2)}</span>
                 </div>
               );
