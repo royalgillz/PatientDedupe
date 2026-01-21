@@ -3,7 +3,5 @@
 **/.env
 **/.git
 tools
-engine
 docs
 assets
-*.md

@@ -35,14 +35,12 @@ jobs:
           cp deploy/README.space.md staging/README.md
           cp -r backend staging/backend
           cp -r frontend staging/frontend
+          cp -r engine staging/engine
           rm -rf staging/backend/node_modules staging/frontend/node_modules \
-                 staging/frontend/dist staging/backend/.env
-          # The single-file WebAssembly modules read as binary to the Hub, so store
-          # them with LFS; Hugging Face resolves them into the Docker build context.
-          printf '%s\n' \
-            'backend/src/wasm/matcher.js filter=lfs diff=lfs merge=lfs -text' \
-            'frontend/src/wasm/matcher.js filter=lfs diff=lfs merge=lfs -text' \
-            '*.wasm filter=lfs diff=lfs merge=lfs -text' > staging/.gitattributes
+                 staging/frontend/dist staging/backend/.env staging/engine/build
+          # The wasm is rebuilt from source inside the Docker image, so the prebuilt
+          # binary modules are not uploaded (the Hub rejects binary files on commit).
+          rm -f staging/backend/src/wasm/matcher.js staging/frontend/src/wasm/matcher.js
 
       - name: Set up Python
         uses: actions/setup-python@v5
