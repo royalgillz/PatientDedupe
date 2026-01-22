@@ -67,6 +67,8 @@ flowchart TD
     E["C++ matching engine"] -->|"Emscripten"| W["WebAssembly module"]
     W --> API["Node + Hono API"]
     W --> SB["Browser sandbox"]
+    DB --> BLK["SQL blocking (phonetic keys)"]
+    BLK -->|"candidate pairs"| API
     DB <--> API
     API --> UI["React stewardship console"]
     UI --> D1["Dashboard"]
@@ -99,6 +101,8 @@ breakdown for every pair. Absolute throughput varies with machine load.
 | Precision at the auto-merge threshold (0.95) | 1.000 (zero false merges) |
 | Recall at the auto-merge threshold (0.95) | 0.847 |
 | Precision and recall at the review threshold (0.80) | 1.000 and 0.997 |
+| SQL blocking: comparison reduction | about 99.9% (roughly 300 candidates from ~561,000 possible pairs) |
+| SQL blocking: recall | about 92% of true duplicates retained in the candidate set |
 
 Correctness is measured against ground truth: the duplicates are manufactured from
 real Synthea patients by a duplicate injector that records which messy copy came from
@@ -116,6 +120,16 @@ surfaced for a human, with no false positives.
 - A tunable weighted score that always returns a per-field reason breakdown.
 - Non-overlapping bands: at or above 0.95 a pair is confident enough to auto-merge,
   0.80 to 0.95 goes to a human, and below 0.80 is treated as different people.
+
+## SQL blocking
+
+Comparing every record to every other is N-squared, so a Postgres blocking layer
+generates only candidate pairs that share a blocking key. It uses phonetic keys
+(dmetaphone, via the fuzzystrmatch extension) on names and partitions on birth year
+and surname prefix, combining several strategies with a union and backing every join
+with a functional index. The matcher scores only those candidates. It is measured both
+ways: how much it cuts the comparisons, and how many true duplicates the candidate set
+still contains. The SQL lives in `sql/`.
 
 ## Tech stack
 
@@ -144,7 +158,9 @@ Versions confirmed current as of 2026-06-26.
 - [x] **Product** - the stewardship console (dashboard, review queue, audit, search,
   sandbox) on a Node + Postgres API, deployed live, with the engine running as
   WebAssembly on both tiers.
-- [ ] **Phase 2** - SQL blocking layer at population scale.
+- [x] **Phase 2** - SQL blocking layer: phonetic keys (dmetaphone), partitioning, and
+  functional indexes, with the comparison reduction and blocking recall measured and
+  shown on the dashboard.
 - [ ] **Phase 3** - Java HAPI FHIR `Patient/$match` facade.
 - [ ] **Phase 5** - Hadoop / Hive duplicate-rate-by-site analytics at two scales.
 

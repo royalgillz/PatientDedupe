@@ -6,6 +6,8 @@
 -- (dmetaphone) so records that sound alike land in the same block even when spelled
 -- differently. The functional indexes below let the blocking self-joins use an index
 -- instead of scanning, which is what makes this fast at scale.
+--
+-- @spec BLOCK-003
 
 create extension if not exists fuzzystrmatch;
 

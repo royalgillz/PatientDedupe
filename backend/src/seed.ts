@@ -242,6 +242,7 @@ async function main() {
 
   // Phase 2: generate candidate pairs with the SQL blocking layer rather than
   // comparing every record to every other one.
+  // @spec BLOCK-004, BLOCK-005
   console.log("running SQL blocking...");
   const blockingSql = readFileSync(resolve(here, "../../sql/blocking_candidates.sql"), "utf8");
   const candidates = (await sql.unsafe(blockingSql)) as unknown as { a_id: number; b_id: number }[];

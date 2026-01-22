@@ -6,6 +6,8 @@
 -- join condition is backed by a functional index from blocking_setup.sql.
 --
 -- The matcher then scores only these candidates, not the full cross product.
+--
+-- @spec BLOCK-001, BLOCK-002
 
 -- same-sounding surname and same birth year (typos, nicknames, abbreviations)
 select a.id as a_id, b.id as b_id

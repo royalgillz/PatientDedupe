@@ -115,7 +115,7 @@ export default function Dashboard() {
               </div>
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <div>
-                  <div className="tnum text-3xl font-semibold text-brand-ink">{pct(data.blocking.reduction)}</div>
+                  <div className="tnum text-3xl font-semibold text-brand-ink">{(data.blocking.reduction * 100).toFixed(1)}%</div>
                   <div className="text-[12px] text-ink-3">fewer comparisons</div>
                 </div>
                 <div>
