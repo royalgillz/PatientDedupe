@@ -40,8 +40,13 @@ app.get("/api/dashboard", async (c) => {
   const [merged] = await sql`select count(*)::int as n from candidate_pairs where status = 'merged'`;
   const [autoMerge] = await sql`select count(*)::int as n from candidate_pairs where band = 'match'`;
   const [totalPairs] = await sql`select count(*)::int as n from candidate_pairs`;
+  const [blocking] = await sql`
+    select all_pairs::float8 as all_pairs, candidate_pairs::float8 as candidate_pairs,
+           reduction, true_duplicates, captured, recall, generated_at
+    from blocking_stats where id = 1`;
 
   return c.json({
+    blocking: blocking ?? null,
     records: totals.records,
     persons: totals.persons,
     duplicateRate: totals.records ? 1 - totals.persons / totals.records : 0,

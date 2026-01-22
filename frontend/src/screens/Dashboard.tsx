@@ -100,6 +100,32 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {data.blocking && (
+            <Card className="p-5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-[13px] font-semibold text-ink">SQL blocking layer</div>
+                  <div className="mt-0.5 text-[12px] text-ink-3">
+                    Phonetic keys and partitioning cut how many pairs the matcher has to score.
+                  </div>
+                </div>
+                <span className="tnum text-[11px] text-ink-3">
+                  {data.blocking.candidate_pairs.toLocaleString()} of {data.blocking.all_pairs.toLocaleString()} possible pairs
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <div className="tnum text-3xl font-semibold text-brand-ink">{pct(data.blocking.reduction)}</div>
+                  <div className="text-[12px] text-ink-3">fewer comparisons</div>
+                </div>
+                <div>
+                  <div className="tnum text-3xl font-semibold text-ink">{pct(data.blocking.recall)}</div>
+                  <div className="text-[12px] text-ink-3">of true duplicates still captured</div>
+                </div>
+              </div>
+            </Card>
+          )}
+
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="p-5 lg:col-span-2">
               <div className="text-[13px] font-semibold text-ink">Match score distribution</div>

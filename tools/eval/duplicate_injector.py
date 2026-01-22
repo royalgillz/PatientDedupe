@@ -19,7 +19,7 @@ import random
 import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 PATIENTS = os.path.join(ROOT, "tools", "synthea", "output", "csv", "patients.csv")
 OUT = os.path.join(ROOT, "data", "pairs.csv")
 

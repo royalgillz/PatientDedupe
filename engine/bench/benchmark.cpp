@@ -7,7 +7,7 @@
 
 // Measures raw scoring throughput in candidate pairs per second. The point is a
 // concrete, repeatable number we can compare against the Python baseline in
-// tools/baseline. It is a microbenchmark of the engine only, with no I/O or
+// tools/eval. It is a microbenchmark of the engine only, with no I/O or
 // blocking, so it isolates the cost of the math.
 namespace {
 

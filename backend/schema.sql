@@ -72,6 +72,19 @@ create table if not exists audit_log (
   details     jsonb
 );
 
+-- A single-row summary of the last blocking run: how much it cut the comparison
+-- count, and how many true duplicates it still captured.
+create table if not exists blocking_stats (
+  id              integer primary key default 1,
+  all_pairs       bigint not null,
+  candidate_pairs bigint not null,
+  reduction       double precision not null,
+  true_duplicates integer not null,
+  captured        integer not null,
+  recall          double precision not null,
+  generated_at    timestamptz not null default now()
+);
+
 create index if not exists idx_pairs_status on candidate_pairs(status);
 create index if not exists idx_pairs_score  on candidate_pairs(score desc);
 create index if not exists idx_source_person on source_records(person_key);

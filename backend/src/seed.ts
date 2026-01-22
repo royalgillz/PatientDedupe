@@ -56,6 +56,7 @@ function shuffle<T>(arr: T[]): T[] {
   }
   return a;
 }
+const pairKey = (x: number, y: number) => (x < y ? `${x}-${y}` : `${y}-${x}`);
 
 function parseCsv(text: string): Record<string, string>[] {
   const rows: string[][] = [];
@@ -209,28 +210,6 @@ async function main() {
     pairs.push({ a: orig, b: records.length - 1, truth: true });
   }
 
-  // confusable negatives: different people who share a surname or a birth year, the
-  // cases a naive matcher trips on. Over-generate, then keep the ambiguous ones.
-  const byYear = new Map<string, number[]>();
-  const bySurname = new Map<string, number[]>();
-  for (let i = 0; i < baseCount; i++) {
-    const y = records[i].dob.slice(0, 4);
-    const s = records[i].last_name.toLowerCase();
-    (byYear.get(y) ?? byYear.set(y, []).get(y)!).push(i);
-    (bySurname.get(s) ?? bySurname.set(s, []).get(s)!).push(i);
-  }
-  const negSeen = new Set<string>();
-  for (let attempt = 0; attempt < 1600; attempt++) {
-    const bucket = pick([...(attempt % 2 ? bySurname : byYear).values()]);
-    if (bucket.length < 2) continue;
-    const a = pick(bucket), b = pick(bucket);
-    if (a === b || records[a].person_key === records[b].person_key) continue;
-    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
-    if (negSeen.has(key)) continue;
-    negSeen.add(key);
-    pairs.push({ a, b, truth: false });
-  }
-
   console.log("resetting tables...");
   await sql`truncate audit_log, golden_records, candidate_pairs, source_records, reviewers restart identity cascade`;
 
@@ -254,32 +233,61 @@ async function main() {
     { name: "Dr. Chen", email: "chen@example-health.org", role: "lead" },
   ])}`;
 
-  console.log(`scoring ${pairs.length} candidate pairs with the engine...`);
-  const pairRows = [];
-  for (const p of pairs) {
-    const result = await scorePair(asPatient(records[p.a]), asPatient(records[p.b]));
-    pairRows.push({
-      record_a_id: ids[p.a],
-      record_b_id: ids[p.b],
-      score: result.score,
-      band: result.label,
+  // Ground truth: the duplicate pairs we injected, keyed by database id, and a lookup
+  // from id back to the in-memory record (with person_key) for scoring and grading.
+  const recById = new Map<number, Rec>();
+  records.forEach((r, i) => recById.set(ids[i], r));
+  const truePairs = new Set<string>();
+  for (const p of pairs) truePairs.add(pairKey(ids[p.a], ids[p.b]));
+
+  // Phase 2: generate candidate pairs with the SQL blocking layer rather than
+  // comparing every record to every other one.
+  console.log("running SQL blocking...");
+  const blockingSql = readFileSync(resolve(here, "../../sql/blocking_candidates.sql"), "utf8");
+  const candidates = (await sql.unsafe(blockingSql)) as unknown as { a_id: number; b_id: number }[];
+  const n = records.length;
+  const allPairs = (n * (n - 1)) / 2;
+
+  // Blocking recall: did the candidate set actually contain the true duplicate pairs?
+  const candSet = new Set(candidates.map((c) => pairKey(c.a_id, c.b_id)));
+  let captured = 0;
+  for (const k of truePairs) if (candSet.has(k)) captured++;
+  const recall = truePairs.size ? captured / truePairs.size : 0;
+  const reduction = 1 - candidates.length / allPairs;
+  console.log(`blocking: ${candidates.length} candidates of ${allPairs} possible (${(reduction * 100).toFixed(1)}% fewer), recall ${(recall * 100).toFixed(1)}%`);
+
+  // Score every candidate with the engine; keep the ones worth a steward's time.
+  console.log("scoring candidates...");
+  const kept: {
+    record_a_id: number; record_b_id: number; score: number; band: string;
+    reasons: ReturnType<typeof sql.json>; is_true_duplicate: boolean;
+  }[] = [];
+  for (const c of candidates) {
+    const ra = recById.get(c.a_id);
+    const rb = recById.get(c.b_id);
+    if (!ra || !rb) continue;
+    const result = await scorePair(asPatient(ra), asPatient(rb));
+    if (result.score < 0.75) continue;
+    kept.push({
+      record_a_id: c.a_id, record_b_id: c.b_id,
+      score: result.score, band: result.label,
       reasons: sql.json(result.fields),
-      is_true_duplicate: p.truth,
+      is_true_duplicate: ra.person_key === rb.person_key,
     });
   }
-  // keep pairs worth a steward's attention: real duplicates the engine surfaced, plus
-  // confusable non-duplicates that land in the same score range. A real system gets
-  // these from the SQL blocking layer in Phase 2.
-  const dupKept = pairRows.filter((r) => r.is_true_duplicate && r.score >= 0.6);
-  const negKept = pairRows
-    .filter((r) => !r.is_true_duplicate && r.score >= 0.62 && r.score <= 0.93)
-    .slice(0, N_NEGATIVES);
-  const worth = [...dupKept, ...negKept];
+
   const pairIds: number[] = [];
-  for (let i = 0; i < worth.length; i += chunk) {
-    const ins = await sql`insert into candidate_pairs ${sql(worth.slice(i, i + chunk))} returning id`;
+  for (let i = 0; i < kept.length; i += chunk) {
+    const ins = await sql`insert into candidate_pairs ${sql(kept.slice(i, i + chunk))} returning id`;
     for (const r of ins) pairIds.push(r.id as number);
   }
+
+  await sql`insert into blocking_stats
+      (id, all_pairs, candidate_pairs, reduction, true_duplicates, captured, recall, generated_at)
+    values (1, ${allPairs}, ${candidates.length}, ${reduction}, ${truePairs.size}, ${captured}, ${recall}, now())
+    on conflict (id) do update set all_pairs = excluded.all_pairs, candidate_pairs = excluded.candidate_pairs,
+      reduction = excluded.reduction, true_duplicates = excluded.true_duplicates, captured = excluded.captured,
+      recall = excluded.recall, generated_at = excluded.generated_at`;
 
   // Backfill a realistic decision history so the audit log and dashboard reflect a
   // queue that has been worked, rather than looking like an empty fixture.
@@ -292,9 +300,9 @@ async function main() {
   };
   const NOTES = ["", "", "", "Confirmed against prior visit.", "Address verified with patient.",
     "Flagged to registration desk.", "DOB mismatch unresolved.", "Matches insurance record."];
-  const history = shuffle(pairIds.map((_, i) => i)).slice(0, Math.min(34, worth.length));
+  const history = shuffle(pairIds.map((_, i) => i)).slice(0, Math.min(34, kept.length));
   for (const k of history) {
-    const w = worth[k];
+    const w = kept[k];
     const action = w.score >= 0.92 ? "merged" : w.score < 0.82 ? "not_a_match"
       : pick(["merged", "not_a_match", "need_info"]);
     const reviewer = pick(revs);
@@ -308,10 +316,10 @@ async function main() {
               ${w.record_a_id}, ${w.record_b_id}, ${w.score}, ${reason}, ${note || null}, ${sql.json({ band: w.band })})`;
   }
 
-  const bands = worth.reduce<Record<string, number>>((m, r) => {
+  const bands = kept.reduce<Record<string, number>>((m, r) => {
     m[r.band] = (m[r.band] ?? 0) + 1; return m;
   }, {});
-  console.log(`seeded ${records.length} records, ${worth.length} pairs, ${history.length} historical decisions`, bands);
+  console.log(`seeded ${n} records | ${candidates.length} candidates, ${(reduction * 100).toFixed(1)}% fewer comparisons, ${(recall * 100).toFixed(1)}% blocking recall | ${kept.length} review tasks`, bands);
   await sql.end();
 }
 

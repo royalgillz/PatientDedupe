@@ -45,7 +45,18 @@ export interface Reviewer {
   role: string;
 }
 
+export interface BlockingStats {
+  all_pairs: number;
+  candidate_pairs: number;
+  reduction: number;
+  true_duplicates: number;
+  captured: number;
+  recall: number;
+  generated_at: string;
+}
+
 export interface DashboardData {
+  blocking: BlockingStats | null;
   records: number;
   persons: number;
   duplicateRate: number;

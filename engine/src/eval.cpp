@@ -6,7 +6,7 @@
 
 #include "patientdedupe/matcher.hpp"
 
-// Reads the labelled pairs produced by tools/duplicate_injector.py and reports how
+// Reads the labelled pairs produced by tools/eval/duplicate_injector.py and reports how
 // well the engine separates true duplicates from non-duplicates. Because the labels
 // are ground truth, precision and recall here are real correctness numbers, not
 // guesses. We report two operating points: the auto-merge threshold (high
