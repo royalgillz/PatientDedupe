@@ -7,6 +7,9 @@
 --
 -- The matcher then scores only these candidates, not the full cross product.
 --
+-- The FHIR Patient/$match facade reuses these same four strategies one-sided, for a
+-- single external probe, in blocking_probe.sql. Keep the two in sync.
+--
 -- @spec BLOCK-001, BLOCK-002
 
 -- same-sounding surname and same birth year (typos, nicknames, abbreviations)

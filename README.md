@@ -74,7 +74,9 @@ flowchart TD
     UI --> D1["Dashboard"]
     UI --> D2["Review queue + adjudication"]
     UI --> D3["Audit log"]
-    API -. planned .-> FHIR["Java FHIR Patient/$match"]
+    W --> FHIR["Java FHIR Patient/$match"]
+    BLK -->|"candidates"| FHIR
+    DB <--> FHIR
     DB -. planned .-> HV["Hadoop / Hive analytics"]
 
     classDef core fill:#e3f2ef,stroke:#0e7c7b,color:#0a4f4e;
@@ -83,10 +85,47 @@ flowchart TD
     class DB,API data;
 ```
 
-The same C++ engine is compiled to WebAssembly and used in three places: the browser
-sandbox, the Node API (so the server and the client score identically), and the
-native build used for tests and benchmarks. The live demo runs as a Hugging Face
-Docker Space serving the API and the built frontend, with Postgres on Supabase.
+The same C++ engine is compiled to WebAssembly and used in four places from one
+implementation: the browser sandbox, the Node API (so the server and the client score
+identically), the native build used for tests and benchmarks, and the Java FHIR
+service, which loads the very same wasm into the JVM. The live demo runs as Hugging
+Face Docker Spaces (the Node console and the Java FHIR API) with Postgres on Supabase.
+
+## FHIR Patient/$match API
+
+Other systems do not call PatientDedupe through a bespoke API; they call the standard
+FHIR `Patient/$match` operation. A Java service built on HAPI FHIR exposes it, reusing
+the same engine and the same SQL blocking layer underneath.
+
+The single source of truth is preserved in the strongest way: the Java service does not
+re-implement any matching math. It loads the identical Emscripten-compiled engine into
+the JVM through a pure-Java WebAssembly runtime (Chicory) and calls it in process, so the
+exact same compiled binary runs in the browser, in the Node API, and in the JVM. The
+match grade it returns is mapped from the engine's own label, so the confidence bands
+stay defined only in the C++.
+
+A real call against the live synthetic data, probing with a typo (`Abdoul`) and an
+abbreviated street (`Fay Jct`) for a record stored as `Abdul Schoen, Fay Junction`:
+
+```
+POST /fhir/Patient/$match
+{"resourceType":"Parameters","parameter":[{"name":"resource","resource":{
+  "resourceType":"Patient","name":[{"family":"Schoen","given":["Abdoul"]}],
+  "birthDate":"2000-05-31","gender":"male",
+  "address":[{"line":["Fay Jct"],"city":"Lunenburg","postalCode":"01462"}]}}]}
+```
+
+returns a searchset `Bundle` whose entry is the real record, with a calculated score and
+the standard match-grade extension:
+
+```
+search.score  = 0.9506
+match-grade   = certain
+identifier    = urn:patientdedupe:source:Lab Feed | LAB-439696
+```
+
+The response carries the source-system identifier so the caller can resolve the record,
+and never the synthetic ground-truth key.
 
 ## Results (measured here)
 
@@ -147,7 +186,9 @@ Versions confirmed current as of 2026-06-26.
 | End-to-end and screenshots | Playwright | 1.61.0 |
 | Database | Postgres (Supabase) | 17 |
 | Deploy | Hugging Face Docker Space | - |
-| FHIR API (planned) | Java + HAPI FHIR | - |
+| FHIR API | Java + HAPI FHIR, Jetty, JDBC | HAPI 8.10.0, Jetty 12.1.10, JDK 17 |
+| FHIR engine reuse | Chicory (wasm in the JVM) | 1.7.5 |
+| FHIR tests | JUnit + Testcontainers | 5.14.4 / 2.0.5 |
 | Analytics (planned) | Apache Hadoop + Hive | - |
 
 ## Project status
@@ -161,7 +202,8 @@ Versions confirmed current as of 2026-06-26.
 - [x] **Phase 2** - SQL blocking layer: phonetic keys (dmetaphone), partitioning, and
   functional indexes, with the comparison reduction and blocking recall measured and
   shown on the dashboard.
-- [ ] **Phase 3** - Java HAPI FHIR `Patient/$match` facade.
+- [x] **Phase 3** - Java HAPI FHIR `Patient/$match` facade, reusing the SQL blocking
+  layer for candidates and running the same C++ engine as WebAssembly inside the JVM.
 - [ ] **Phase 5** - Hadoop / Hive duplicate-rate-by-site analytics at two scales.
 
 ## Build and run
@@ -199,6 +241,27 @@ npm run dev                    # console on :5173, proxies /api to :8787
 The whole thing builds into one container via the `Dockerfile` (it compiles the wasm
 from source with Emscripten, builds the frontend, and runs the API), which is how the
 Hugging Face Space is deployed on every push.
+
+The FHIR API (Java):
+
+```
+# build the engine's C-ABI wasm the JVM loads (once, from the engine source)
+em++ -O3 -std=c++17 -Iengine/include \
+  engine/src/metrics.cpp engine/src/nicknames.cpp engine/src/matcher.cpp engine/wasm/c_abi.cpp \
+  -sSTANDALONE_WASM=1 -sEXPORTED_FUNCTIONS=_pdd_alloc,_pdd_free,_pdd_match \
+  -sALLOW_MEMORY_GROWTH=1 --no-entry -o fhir/src/main/resources/pdd_engine.wasm
+
+cd fhir
+mvn test                                          # unit tests
+mvn test -Dtest.excludedGroups= "-Dtest=*IT"      # + wasm and Testcontainers tests (needs Docker)
+mvn -DskipTests package                           # fat jar
+DATABASE_URL=... PORT=8080 java -jar target/patientdedupe-fhir-0.1.0.jar
+# POST /fhir/Patient/$match, capability at /fhir/metadata
+```
+
+The FHIR service ships as its own Hugging Face Docker Space via `Dockerfile.fhir` (it
+compiles the same wasm from source and builds the fat jar), deployed on every push by
+`deploy-fhir-space.yml`.
 
 ## Synthetic data and responsible use
 

@@ -1,0 +1,32 @@
+# Builds the Java FHIR service for its own Hugging Face Docker Space. Like the Node
+# image, the wasm engine is compiled from source here rather than shipped as a binary;
+# the difference is the binding. Stage 0 builds the standalone C-ABI wasm the JVM can
+# call, stage 1 packages it into the fat jar, and stage 2 runs the HAPI server.
+
+# Stage 0: compile the engine to a standalone C-ABI WebAssembly module for the JVM
+FROM emscripten/emsdk:latest AS wasm
+WORKDIR /src
+COPY engine/ ./engine/
+RUN em++ -O3 -std=c++17 -Iengine/include \
+    engine/src/metrics.cpp engine/src/nicknames.cpp engine/src/matcher.cpp engine/wasm/c_abi.cpp \
+    -sSTANDALONE_WASM=1 -sEXPORTED_FUNCTIONS=_pdd_alloc,_pdd_free,_pdd_match \
+    -sALLOW_MEMORY_GROWTH=1 --no-entry \
+    -o /src/pdd_engine.wasm
+
+# Stage 1: build the fat jar with the freshly built wasm bundled as a resource. Only the
+# pom and source are copied (not the local .mvn config), so the machine-local truststore
+# workaround never reaches this clean Linux build.
+FROM maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /build
+COPY fhir/pom.xml ./pom.xml
+COPY fhir/src ./src
+COPY --from=wasm /src/pdd_engine.wasm ./src/main/resources/pdd_engine.wasm
+RUN mvn -B -DskipTests clean package
+
+# Stage 2: runtime. Hugging Face routes to app_port 7860 (set in the Space README).
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+COPY --from=build /build/target/patientdedupe-fhir-0.1.0.jar ./app.jar
+ENV PORT=7860
+EXPOSE 7860
+CMD ["java", "-jar", "app.jar"]

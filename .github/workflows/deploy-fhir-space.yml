@@ -1,0 +1,60 @@
+name: Deploy FHIR API to Hugging Face Space
+
+# Ships the Java FHIR service to its own Hugging Face Docker Space on every push to main
+# that touches the engine or the FHIR module. We stage the FHIR Dockerfile plus the
+# engine and fhir source (no build output, no local Maven config, no secrets); Hugging
+# Face builds the image and serves it. The database lives in Supabase, supplied to the
+# running container through the DATABASE_URL Space secret.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "engine/**"
+      - "fhir/**"
+      - "Dockerfile.fhir"
+      - "deploy/README.fhir-space.md"
+      - ".github/workflows/deploy-fhir-space.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-fhir-space
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Stage the Space build context
+        run: |
+          mkdir -p staging
+          cp Dockerfile.fhir staging/Dockerfile
+          cp deploy/README.fhir-space.md staging/README.md
+          cp -r engine staging/engine
+          cp -r fhir staging/fhir
+          # The wasm is rebuilt from source inside the image, and build output and local
+          # Maven config must not be uploaded.
+          rm -rf staging/engine/build \
+                 staging/fhir/target \
+                 staging/fhir/.mvn \
+                 staging/fhir/src/main/resources/pdd_engine.wasm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the Hugging Face CLI
+        run: pip install -U "huggingface_hub[cli]"
+
+      - name: Upload to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          hf upload Sehajgill/PatientDedupe-FHIR ./staging . \
+            --repo-type space \
+            --delete "*" \
+            --commit-message "Deploy FHIR API from ${GITHUB_SHA}"
