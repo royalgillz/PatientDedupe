@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowUpRight, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import {
   Bar,
   BarChart,
@@ -12,9 +14,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { api, type Band } from "@/lib/api";
 import { pct } from "@/lib/format";
+import { useReviewer } from "@/lib/reviewer";
 
 const BAND_COLOR: Record<Band, string> = {
   match: "#15803d",
@@ -43,9 +48,26 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-// @spec CONSOLE-006
+// @spec CONSOLE-006, CONSOLE-010
 export default function Dashboard() {
   const { data, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: api.dashboard });
+  const { current } = useReviewer();
+  const qc = useQueryClient();
+  const [confirmBulk, setConfirmBulk] = useState(false);
+
+  const bulk = useMutation({
+    mutationFn: () => api.autoMerge(current!.id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["audit"] });
+      toast.success(`Auto-merged ${res.merged} ${res.merged === 1 ? "pair" : "pairs"}`, {
+        description: "Each is recorded and reversible from the audit log.",
+      });
+      setConfirmBulk(false);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   return (
     <div className="mx-auto max-w-[1120px] space-y-6 p-4 md:p-6">
@@ -95,7 +117,21 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-4 lg:col-span-2">
               <Stat label="Unique patients" value={data.persons.toLocaleString()} sub="distinct people" />
               <Stat label="Source records" value={data.records.toLocaleString()} sub="across all systems" />
-              <Stat label="Auto-merge eligible" value={data.autoMergeEligible.toLocaleString()} sub="score at or above 0.95" />
+              <Card className="flex flex-col p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Auto-merge eligible</div>
+                <div className="tnum mt-2 text-2xl font-semibold tracking-tight text-ink">{data.autoMergeEligible.toLocaleString()}</div>
+                <div className="mt-0.5 text-[12px] text-ink-3">score at or above 0.95</div>
+                {data.autoMergeEligible > 0 && (
+                  <Button
+                    variant="outline"
+                    className="mt-3 h-8 self-start text-[12.5px]"
+                    disabled={!current}
+                    onClick={() => setConfirmBulk(true)}
+                  >
+                    <Sparkles className="size-3.5" /> Auto-merge all
+                  </Button>
+                )}
+              </Card>
               <Stat label="Est. duplicate rate" value={pct(data.duplicateRate)} sub="records beyond unique people" />
             </div>
           </div>
@@ -187,6 +223,22 @@ export default function Dashboard() {
             </div>
           </Card>
         </>
+      )}
+
+      {confirmBulk && data && (
+        <Dialog open onOpenChange={(o) => !o && setConfirmBulk(false)}>
+          <DialogContent className="max-w-md">
+            <DialogTitle>Auto-merge {data.autoMergeEligible} eligible pairs?</DialogTitle>
+            <DialogDescription>
+              Every pending pair the engine scored at or above 0.95 will be merged into a golden record and written to
+              the audit log. You can reverse any of them from the audit log.
+            </DialogDescription>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button variant="ghost" onClick={() => setConfirmBulk(false)}>Cancel</Button>
+              <Button variant="brand" disabled={bulk.isPending} onClick={() => bulk.mutate()}>Confirm auto-merge</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

@@ -126,3 +126,42 @@ it("a thrown handler error returns a readable message, not an empty 500", async 
   expect(typeof body.error).toBe("string");
   expect(body.error.length).toBeGreaterThan(0);
 });
+
+const personKey = async (id: number) =>
+  (await sql`select person_key from source_records where id = ${id}`)[0].person_key;
+
+// @spec API-010
+it("unmerge restores prior person_keys, removes the golden record, and reopens the pair", async () => {
+  const before = await personKey(fx.ids.c1); // Alan Turing, a different person from a1
+  await post(`/api/pairs/${fx.pairs.reviewFalse}/decision`, { action: "merge", reviewerId: fx.reviewerId });
+  expect(await personKey(fx.ids.c1)).not.toBe(before); // relinked to a1's person on merge
+
+  const res = await post(`/api/pairs/${fx.pairs.reviewFalse}/unmerge`, { reviewerId: fx.reviewerId });
+  expect(res.status).toBe(200);
+  expect(await personKey(fx.ids.c1)).toBe(before); // restored
+  expect(await sql`select 1 from golden_records where pair_id = ${fx.pairs.reviewFalse}`).toHaveLength(0);
+  const [pair] = await sql`select status from candidate_pairs where id = ${fx.pairs.reviewFalse}`;
+  expect(pair.status).toBe("pending");
+  const [audit] = await sql`select action from audit_log where pair_id = ${fx.pairs.reviewFalse} and action = 'unmerge'`;
+  expect(audit).toBeTruthy();
+});
+
+// @spec API-010
+it("rejects an unmerge with no reviewer (no anonymous unmerges)", async () => {
+  await post(`/api/pairs/${fx.pairs.match}/decision`, { action: "merge", reviewerId: fx.reviewerId });
+  const res = await post(`/api/pairs/${fx.pairs.match}/unmerge`, {});
+  expect(res.status).toBe(400);
+  const [pair] = await sql`select status from candidate_pairs where id = ${fx.pairs.match}`;
+  expect(pair.status).toBe("merged");
+});
+
+// @spec API-011
+it("bulk auto-merge merges every pending match-band pair", async () => {
+  const res = await post(`/api/auto-merge`, { reviewerId: fx.reviewerId });
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.merged).toBe(1); // the fixture has one match-band pair
+  const [pair] = await sql`select status from candidate_pairs where id = ${fx.pairs.match}`;
+  expect(pair.status).toBe("merged");
+  expect(await sql`select 1 from golden_records where pair_id = ${fx.pairs.match}`).toHaveLength(1);
+});

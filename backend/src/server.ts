@@ -106,20 +106,51 @@ app.get("/api/pairs/:id", async (c) => {
 
 const FIELDS = ["first_name", "last_name", "dob", "gender", "address", "city", "state", "zip", "mrn"];
 
+type Reviewer = { id: number; name: string };
+
+// Merge one pair into a golden record. Captures each member's pre-merge person_key in the
+// audit details so the merge can be reversed exactly, then links the records and writes
+// the merge audit row. Used by the single decision and by bulk auto-merge.
+// @spec API-003
+async function mergePair(pair: any, reviewer: Reviewer, reasonCode: string | null, note: string | null) {
+  const a = pair.record_a, b = pair.record_b;
+  const fields: Record<string, { value: string; source: string }> = {};
+  for (const f of FIELDS) {
+    // simple survivorship: keep the more complete value, preferring record A on ties
+    const av = (a[f] ?? "").toString(), bv = (b[f] ?? "").toString();
+    const useA = av.length >= bv.length;
+    fields[f] = { value: useA ? av : bv, source: useA ? a.source_system : b.source_system };
+  }
+  const eid = `EID-${String(pair.id).padStart(6, "0")}`;
+  const [golden] = await sql`
+    insert into golden_records (enterprise_id, pair_id, fields, member_record_ids, created_by)
+    values (${eid}, ${pair.id}, ${sql.json(fields)}, ${[a.id, b.id]}, ${reviewer.id})
+    returning *`;
+
+  const prior: Record<string, number | null> = { [a.id]: a.person_key ?? null, [b.id]: b.person_key ?? null };
+  await sql`update source_records set person_key = ${a.person_key ?? a.id} where id = any(${[a.id, b.id]})`;
+  await sql`update candidate_pairs set status = 'merged', decided_at = now(),
+    decided_by = ${reviewer.id}, reason_code = ${reasonCode}, note = ${note} where id = ${pair.id}`;
+  await sql`
+    insert into audit_log (actor, action, pair_id, record_a_id, record_b_id, score, reason_code, note, details)
+    values (${reviewer.name}, 'merge', ${pair.id}, ${pair.record_a_id}, ${pair.record_b_id},
+            ${pair.score}, ${reasonCode}, ${note}, ${sql.json({ band: pair.band, prior })})`;
+  return golden;
+}
+
+async function findReviewer(reviewerId?: number): Promise<Reviewer | null> {
+  if (!reviewerId) return null;
+  const [reviewer] = await sql`select id, name from reviewers where id = ${reviewerId}`;
+  return reviewer ?? null;
+}
+
 // Record a steward decision. No anonymous merges: a valid reviewer is required.
 // @spec API-002, API-003, API-004
 app.post("/api/pairs/:id/decision", async (c) => {
   const id = Number(c.req.param("id"));
-  const body = await c.req.json<{
-    action: "merge" | "not_a_match" | "need_info";
-    reviewerId?: number;
-    reasonCode?: string;
-    note?: string;
-  }>();
-
-  if (!body.reviewerId) return c.json({ error: "a logged-in reviewer is required" }, 400);
-  const [reviewer] = await sql`select id, name from reviewers where id = ${body.reviewerId}`;
-  if (!reviewer) return c.json({ error: "unknown reviewer" }, 400);
+  const body = await c.req.json<{ action: "merge" | "not_a_match" | "need_info"; reviewerId?: number; reasonCode?: string; note?: string }>();
+  const reviewer = await findReviewer(body.reviewerId);
+  if (!reviewer) return c.json({ error: "a logged-in reviewer is required" }, 400);
 
   const [pair] = await sql`
     select p.*, row_to_json(a.*) as record_a, row_to_json(b.*) as record_b
@@ -129,42 +160,67 @@ app.post("/api/pairs/:id/decision", async (c) => {
     where p.id = ${id}`;
   if (!pair) return c.json({ error: "not found" }, 404);
 
-  const statusMap = { merge: "merged", not_a_match: "not_a_match", need_info: "need_info" } as const;
-  const status = statusMap[body.action];
-
-  await sql`
-    update candidate_pairs set status = ${status}, decided_at = now(),
-      decided_by = ${body.reviewerId}, reason_code = ${body.reasonCode ?? null},
-      note = ${body.note ?? null}
-    where id = ${id}`;
-
-  let golden = null;
   if (body.action === "merge") {
-    const a = pair.record_a, b = pair.record_b;
-    const fields: Record<string, { value: string; source: string }> = {};
-    for (const f of FIELDS) {
-      // simple survivorship: keep the more complete value, preferring record A on ties
-      const av = (a[f] ?? "").toString(), bv = (b[f] ?? "").toString();
-      const useA = av.length >= bv.length;
-      fields[f] = { value: useA ? av : bv, source: useA ? a.source_system : b.source_system };
-    }
-    const eid = `EID-${String(id).padStart(6, "0")}`;
-    const [g] = await sql`
-      insert into golden_records (enterprise_id, pair_id, fields, member_record_ids, created_by)
-      values (${eid}, ${id}, ${sql.json(fields)}, ${[a.id, b.id]}, ${body.reviewerId})
-      returning *`;
-    golden = g;
-    // link the two source records to the same person going forward
-    await sql`update source_records set person_key = ${a.person_key ?? a.id} where id = any(${[a.id, b.id]})`;
+    const golden = await mergePair(pair, reviewer, body.reasonCode ?? null, body.note ?? null);
+    return c.json({ ok: true, status: "merged", golden });
   }
 
+  const status = body.action === "not_a_match" ? "not_a_match" : "need_info";
+  await sql`update candidate_pairs set status = ${status}, decided_at = now(),
+    decided_by = ${reviewer.id}, reason_code = ${body.reasonCode ?? null}, note = ${body.note ?? null}
+    where id = ${id}`;
   await sql`
     insert into audit_log (actor, action, pair_id, record_a_id, record_b_id, score, reason_code, note, details)
     values (${reviewer.name}, ${body.action}, ${id}, ${pair.record_a_id}, ${pair.record_b_id},
-            ${pair.score}, ${body.reasonCode ?? null}, ${body.note ?? null},
-            ${sql.json({ band: pair.band })})`;
+            ${pair.score}, ${body.reasonCode ?? null}, ${body.note ?? null}, ${sql.json({ band: pair.band })})`;
+  return c.json({ ok: true, status });
+});
 
-  return c.json({ ok: true, status, golden });
+// Reverse a merge: restore the prior person_keys, drop the golden record, reopen the pair.
+// @spec API-010
+app.post("/api/pairs/:id/unmerge", async (c) => {
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json<{ reviewerId?: number; note?: string }>();
+  const reviewer = await findReviewer(body.reviewerId);
+  if (!reviewer) return c.json({ error: "a logged-in reviewer is required" }, 400);
+
+  const [pair] = await sql`select * from candidate_pairs where id = ${id}`;
+  if (!pair) return c.json({ error: "not found" }, 404);
+  if (pair.status !== "merged") return c.json({ error: "pair is not merged" }, 400);
+
+  const [mergeAudit] = await sql`
+    select details from audit_log where pair_id = ${id} and action = 'merge' order by ts desc limit 1`;
+  const prior = (mergeAudit?.details?.prior ?? {}) as Record<string, number | null>;
+  for (const [recId, pk] of Object.entries(prior)) {
+    await sql`update source_records set person_key = ${pk} where id = ${Number(recId)}`;
+  }
+  await sql`delete from golden_records where pair_id = ${id}`;
+  await sql`update candidate_pairs set status = 'pending', decided_at = null, decided_by = null,
+    reason_code = null, note = null where id = ${id}`;
+  await sql`
+    insert into audit_log (actor, action, pair_id, record_a_id, record_b_id, score, note, details)
+    values (${reviewer.name}, 'unmerge', ${id}, ${pair.record_a_id}, ${pair.record_b_id},
+            ${pair.score}, ${body.note ?? null}, ${sql.json({ restored: prior })})`;
+  return c.json({ ok: true, status: "pending" });
+});
+
+// Merge every pending match-band pair in one identified action.
+// @spec API-011
+app.post("/api/auto-merge", async (c) => {
+  const body = await c.req.json<{ reviewerId?: number }>().catch(() => ({}) as { reviewerId?: number });
+  const reviewer = await findReviewer(body.reviewerId);
+  if (!reviewer) return c.json({ error: "a logged-in reviewer is required" }, 400);
+
+  const pairs = await sql`
+    select p.*, row_to_json(a.*) as record_a, row_to_json(b.*) as record_b
+    from candidate_pairs p
+    join source_records a on a.id = p.record_a_id
+    join source_records b on b.id = p.record_b_id
+    where p.status = 'pending' and p.band = 'match'`;
+  for (const pair of pairs) {
+    await mergePair(pair, reviewer, "Auto-merge (>= 0.95)", null);
+  }
+  return c.json({ ok: true, merged: pairs.length });
 });
 
 // @spec API-006

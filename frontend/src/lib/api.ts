@@ -89,6 +89,19 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const msg = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((msg as { error?: string }).error ?? "request failed");
+  }
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   dashboard: () => get<DashboardData>("/dashboard"),
   reviewers: () => get<Reviewer[]>("/reviewers"),
@@ -118,6 +131,10 @@ export const api = {
     }
     return res.json() as Promise<{ ok: boolean; status: string; golden?: { enterprise_id: string } }>;
   },
+  unmerge: (pairId: number, reviewerId: number, note?: string) =>
+    post<{ ok: boolean; status: string }>(`/pairs/${pairId}/unmerge`, { reviewerId, note }),
+  autoMerge: (reviewerId: number) =>
+    post<{ ok: boolean; merged: number }>("/auto-merge", { reviewerId }),
 };
 
 export const bandLabel: Record<Band, string> = {

@@ -65,6 +65,28 @@ test("the dashboard leads with the pending-review count", async ({ page }) => {
   await expect(page.getByText("Pending review")).toBeVisible();
 });
 
+// @spec CONSOLE-009, API-010
+test("a merge can be reversed from the audit log", async ({ page }) => {
+  await page.goto("/queue");
+  await bandSelect(page).selectOption("match");
+  await page.getByRole("button", { name: "Merge", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm merge" }).click();
+  await expect(page.getByText(/Merged:/)).toBeVisible();
+
+  await page.goto("/audit");
+  await page.getByRole("button", { name: /Unmerge/ }).first().click();
+  await page.getByRole("button", { name: "Confirm unmerge" }).click();
+  await expect(page.getByText("Merge reversed")).toBeVisible();
+});
+
+// @spec CONSOLE-010, API-011
+test("the dashboard bulk auto-merges the eligible pairs", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Auto-merge all" }).click();
+  await page.getByRole("button", { name: "Confirm auto-merge" }).click();
+  await expect(page.getByText(/Auto-merged/)).toBeVisible();
+});
+
 // @spec CONSOLE-007
 test("the audit log shows a decision with its reviewer", async ({ page }) => {
   await page.goto("/queue");
