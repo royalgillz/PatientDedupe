@@ -1,0 +1,51 @@
+name: Tests
+
+# Runs the automated test suites on every push and pull request: the backend API and
+# blocking integration tests (Vitest against a Testcontainers Postgres), and the
+# Playwright end-to-end tests for the review console. The wasm engine is committed, so
+# no Emscripten build is needed here; the Docker the runners provide backs the
+# Testcontainers Postgres and the e2e database.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend API + blocking (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and test
+        working-directory: backend
+        run: |
+          npm ci
+          npm test
+
+  e2e:
+    name: Review console (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
+          npm ci --prefix e2e
+      - name: Install Playwright browser
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+      - name: Run the end-to-end tests
+        working-directory: e2e
+        run: npm test

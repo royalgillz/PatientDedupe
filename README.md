@@ -220,7 +220,8 @@ Versions confirmed current as of 2026-06-26.
 | API | Node + Hono + postgres | Hono 4.12, postgres 3.4 |
 | Frontend | Vite + React + TypeScript + Tailwind v4 | Vite 8.1, React 19 |
 | UI libraries | Radix, TanStack Table + Query, Recharts, lucide, sonner | current |
-| End-to-end and screenshots | Playwright | 1.61.0 |
+| API + blocking tests | Vitest + Testcontainers | 4.1.9 / 12.0.3 |
+| End-to-end and screenshots | Playwright | 1.61.1 |
 | Database | Postgres (Supabase) | 17 |
 | Deploy | Hugging Face Docker Space | - |
 | FHIR API | Java + HAPI FHIR, Jetty, JDBC | HAPI 8.10.0, Jetty 12.1.10, JDK 17 |
@@ -245,6 +246,28 @@ Versions confirmed current as of 2026-06-26.
 - [x] **Phase 5** - Hadoop analytics: a hand-written Java MapReduce job (with a HiveQL
   twin) computing duplicate rate by registration site, on a single-node HDFS + YARN
   cluster, measured at increasing scales.
+- [x] **Automated tests** - backend API and blocking integration tests (Vitest against a
+  Testcontainers Postgres) and Playwright end-to-end tests of the review console,
+  including the five safety flows, run in CI.
+
+## Testing
+
+Every layer has tests that cite the specs they verify:
+
+- **Engine** - Catch2 unit tests, plus a benchmark and a precision/recall evaluator.
+- **API and blocking** - Vitest drives the real routes against a throwaway Postgres
+  (Testcontainers), covering the queue, decisions, golden records, audit, dashboard, and
+  search, and asserting the blocking layer only pairs key-sharing records, rides
+  functional indexes, and captures the known duplicates.
+- **Review console** - Playwright end-to-end tests run the whole stack and exercise the
+  five safety-critical flows: the queue loads with the score-and-reason breakdown; a
+  merge previews the surviving golden record then writes it and an audit row; not-a-match
+  suppresses the pair; the band filter narrows the queue; and no merge is possible without
+  an acting reviewer.
+- **FHIR and analytics** - JUnit, with the wasm engine run in the JVM, the blocking query
+  against a real Postgres, and the HiveQL twin checked against the MapReduce result.
+
+A GitHub Actions workflow runs the backend and end-to-end suites on every push.
 
 ## Build and run
 
@@ -276,6 +299,13 @@ The frontend:
 cd frontend
 npm install
 npm run dev                    # console on :5173, proxies /api to :8787
+```
+
+The automated tests (need Docker for the throwaway Postgres):
+
+```
+cd backend && npm test         # API + blocking, Vitest against Testcontainers
+cd e2e && npm install && npx playwright install chromium && npm test   # console e2e
 ```
 
 The whole thing builds into one container via the `Dockerfile` (it compiles the wasm

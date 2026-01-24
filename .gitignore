@@ -52,3 +52,8 @@ dependency-reduced-pom.xml
 
 # Analytics snapshots and job output (regenerable)
 analytics/data/
+
+# Test artifacts
+**/test-results/
+e2e/playwright-report/
+e2e/.cache/

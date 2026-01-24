@@ -4,7 +4,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { sql } from "./db.js";
 
-const app = new Hono();
+// Exported so tests can drive the routes through app.fetch without binding a port.
+export const app = new Hono();
 app.use("/api/*", cors());
 
 // Surface the real error to the client and the logs instead of a bare 500. The data
@@ -198,6 +199,9 @@ app.get("/api/records/:id", async (c) => {
 app.use("/*", serveStatic({ root: "./public" }));
 app.get("/*", serveStatic({ path: "./public/index.html" }));
 
-const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: app.fetch, port, hostname: "0.0.0.0" });
-console.log(`PatientDedupe API listening on :${port}`);
+// Only bind a port when run as the server; tests import `app` and skip this.
+if (process.env.NODE_ENV !== "test") {
+  const port = Number(process.env.PORT ?? 8787);
+  serve({ fetch: app.fetch, port, hostname: "0.0.0.0" });
+  console.log(`PatientDedupe API listening on :${port}`);
+}

@@ -12,6 +12,8 @@ export default defineConfig({
     alias: { "@": path.resolve(import.meta.dirname, "src") },
   },
   server: {
-    proxy: { "/api": "http://localhost:8787" },
+    // Defaults to the local API on :8787; the e2e harness overrides the target so it can
+    // run its own backend on a free port.
+    proxy: { "/api": process.env.VITE_API_PROXY ?? "http://localhost:8787" },
   },
 });

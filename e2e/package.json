@@ -1,0 +1,13 @@
+{
+  "name": "patientdedupe-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Playwright end-to-end tests for the review console",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "postgres": "^3.4.9"
+  }
+}
