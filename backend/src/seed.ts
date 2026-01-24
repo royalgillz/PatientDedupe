@@ -41,6 +41,7 @@ const CITY_ZIPS: [string, string][] = [
   ["Lowell", "01852"], ["Brockton", "02301"], ["Quincy", "02169"]];
 
 // Small deterministic PRNG so the seed is reproducible without a dependency.
+// @spec SEED-005
 let state = 1234567;
 function rand() {
   state = (state * 1103515245 + 12345) & 0x7fffffff;
@@ -147,6 +148,7 @@ function bigEdit(out: Rec, e: string) {
 }
 
 // intensity: "light" -> match band, "moderate" -> review band, "heavy" -> borderline.
+// @spec SEED-002, SEED-003, SEED-004
 function perturb(rec: Rec, personKey: number, intensity: "light" | "moderate" | "heavy"): Rec {
   const out: Rec = { ...rec, person_key: personKey };
   out.source_system = pick(SOURCE_SYSTEMS.filter((s) => s !== rec.source_system));
@@ -177,6 +179,7 @@ async function main() {
 
   const records: Rec[] = [];
   // base records, one per real person
+  // @spec SEED-001
   for (let i = 0; i < Math.min(N_BASE, patients.length); i++) {
     const p = patients[i];
     const system = pick(SOURCE_SYSTEMS);

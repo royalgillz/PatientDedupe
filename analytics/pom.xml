@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.patientdedupe</groupId>
+  <artifactId>patientdedupe-analytics</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>PatientDedupe Analytics</name>
+  <description>Duplicate-rate-by-site MapReduce job with a HiveQL twin</description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- The job jar targets Java 8 so it runs on the standard Hadoop runtime (the
+         apache/hadoop image ships Java 8). Tests target Java 11 and run on the local JDK 11. -->
+
+    <hadoop.version>3.4.3</hadoop.version>
+    <junit.version>5.14.4</junit.version>
+    <h2.version>2.4.240</h2.version>
+
+    <!-- Default run skips integration tests (LocalJobRunner pipeline). Run them with
+         mvn test -Dtest.excludedGroups= "-Dtest=*IT" -->
+    <test.excludedGroups>integration</test.excludedGroups>
+  </properties>
+
+  <dependencies>
+    <!-- Hadoop is provided by the cluster at run time; needed to compile the job and on
+         the test classpath for the local-mode run. -->
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-client</artifactId>
+      <version>${hadoop.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- LocalJobRunner, so the pipeline test runs the real job in-process -->
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
+      <version>${hadoop.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- A pure-Java SQL engine to check the SQL formulation against the MapReduce logic
+         without standing up Hive in the unit run. -->
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <version>${h2.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.15.0</version>
+        <executions>
+          <execution>
+            <id>default-compile</id>
+            <configuration>
+              <release>8</release>
+            </configuration>
+          </execution>
+          <execution>
+            <id>default-testCompile</id>
+            <configuration>
+              <release>11</release>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.6</version>
+        <configuration>
+          <excludedGroups>${test.excludedGroups}</excludedGroups>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

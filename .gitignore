@@ -38,10 +38,10 @@ tools/emsdk/
 # FHIR Docker build and by the local em++ step, so the binary is not committed.
 fhir/src/main/resources/pdd_engine.wasm
 
-# Local-only Maven JVM options. This holds the WINDOWS-ROOT truststore workaround for
-# this machine's intercepting TLS proxy; it must not reach CI or the Linux container
+# Local-only Maven JVM options. These hold the WINDOWS-ROOT truststore workaround for
+# this machine's intercepting TLS proxy; they must not reach CI or the Linux container
 # build, where that truststore type is invalid.
-fhir/.mvn/jvm.config
+**/.mvn/jvm.config
 
 # Environment files with secrets (DATABASE_URL etc.)
 .env
@@ -49,3 +49,6 @@ fhir/.mvn/jvm.config
 
 # Maven shade plugin byproduct
 dependency-reduced-pom.xml
+
+# Analytics snapshots and job output (regenerable)
+analytics/data/

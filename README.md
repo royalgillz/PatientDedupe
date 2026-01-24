@@ -77,7 +77,7 @@ flowchart TD
     W --> FHIR["Java FHIR Patient/$match"]
     BLK -->|"candidates"| FHIR
     DB <--> FHIR
-    DB -. planned .-> HV["Hadoop / Hive analytics"]
+    DB -->|"snapshot"| HV["Hadoop / Hive analytics"]
 
     classDef core fill:#e3f2ef,stroke:#0e7c7b,color:#0a4f4e;
     classDef data fill:#e7f3ea,stroke:#15803d,color:#14532d;
@@ -126,6 +126,43 @@ identifier    = urn:patientdedupe:source:Lab Feed | LAB-439696
 
 The response carries the source-system identifier so the caller can resolve the record,
 and never the synthetic ground-truth key.
+
+## Hadoop analytics: duplicate rate by site
+
+A population-level question the console cannot answer: which registration sites produce
+the most duplicate records? A hand-written Java MapReduce job answers it, with the same
+logic expressed as a HiveQL twin. It is two chained MapReduce passes (label each record as
+primary or duplicate by grouping on the ground-truth person key, then aggregate per site)
+run on a single-node Hadoop (HDFS + YARN) in Docker, with a local-mode fallback.
+
+On the development population the MapReduce job, run on YARN, reports (worst first):
+
+```
+Epic ADT      220 records   54 duplicates   0.2455
+Registration  200 records   48 duplicates   0.2400
+Lab Feed      199 records   45 duplicates   0.2261
+Cerner        233 records   51 duplicates   0.2189
+Radiology     208 records   42 duplicates   0.2019
+```
+
+The 240 duplicates are exactly the number injected, spread across the sites that
+re-registered them. The HiveQL twin computes the same numbers; a test runs the identical
+SQL and checks it against the canonical logic.
+
+It is single-node, stated plainly. Wall-clock is measured at increasing scales (the
+snapshots beyond 1k are generated reproducibly with the same injection rate):
+
+| Scale | Local mode | On YARN |
+| --- | --- | --- |
+| ~1k records | ~19 s | ~136 s |
+| ~100k records | ~19 s | - |
+| ~1M records | ~39 s | - |
+
+The honest reading: at small sizes a fixed startup cost dominates (local mode ~18 s of JVM
+and framework startup; YARN far more, from per-job container scheduling), so 1k and 100k
+take about the same wall-clock in local mode. Only at ~1M does the per-record compute
+become visible. This is the point of running it at two scales rather than quoting one
+number: on a single node the overhead is real and worth showing, not hiding.
 
 ## Results (measured here)
 
@@ -189,7 +226,8 @@ Versions confirmed current as of 2026-06-26.
 | FHIR API | Java + HAPI FHIR, Jetty, JDBC | HAPI 8.10.0, Jetty 12.1.10, JDK 17 |
 | FHIR engine reuse | Chicory (wasm in the JVM) | 1.7.5 |
 | FHIR tests | JUnit + Testcontainers | 5.14.4 / 2.0.5 |
-| Analytics (planned) | Apache Hadoop + Hive | - |
+| Analytics | Apache Hadoop (Java MapReduce) + HiveQL, on JDK 8 | Hadoop 3.4.3 |
+| Analytics tests | JUnit + H2 (SQL parity) | 5.14.4 / 2.4.240 |
 
 ## Project status
 
@@ -204,7 +242,9 @@ Versions confirmed current as of 2026-06-26.
   shown on the dashboard.
 - [x] **Phase 3** - Java HAPI FHIR `Patient/$match` facade, reusing the SQL blocking
   layer for candidates and running the same C++ engine as WebAssembly inside the JVM.
-- [ ] **Phase 5** - Hadoop / Hive duplicate-rate-by-site analytics at two scales.
+- [x] **Phase 5** - Hadoop analytics: a hand-written Java MapReduce job (with a HiveQL
+  twin) computing duplicate rate by registration site, on a single-node HDFS + YARN
+  cluster, measured at increasing scales.
 
 ## Build and run
 
@@ -262,6 +302,17 @@ DATABASE_URL=... PORT=8080 java -jar target/patientdedupe-fhir-0.1.0.jar
 The FHIR service ships as its own Hugging Face Docker Space via `Dockerfile.fhir` (it
 compiles the same wasm from source and builds the fat jar), deployed on every push by
 `deploy-fhir-space.yml`.
+
+The Hadoop analytics job:
+
+```
+cd analytics
+mvn -DskipTests package        # builds the job jar (Java 8 bytecode) on JDK 11
+./run-cluster.sh 1k            # single-node HDFS + YARN, then: docker compose down
+./run-local.sh 100k            # or local mode, no cluster
+```
+
+See `analytics/README.md` for the metric, the HiveQL twin, and the scale runs.
 
 ## Synthetic data and responsible use
 

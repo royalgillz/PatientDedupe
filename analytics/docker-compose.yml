@@ -1,0 +1,42 @@
+# A single-node Hadoop: HDFS (NameNode + DataNode) and YARN (ResourceManager +
+# NodeManager). Enough to load the snapshot into HDFS and run the duplicate-rate-by-site
+# job on YARN, which is the real (single-node) Hadoop path. The local-mode runner in
+# run-local.sh is the lighter fallback that needs none of this.
+services:
+  namenode:
+    image: apache/hadoop:3.4.1
+    hostname: namenode
+    command: ["hdfs", "namenode"]
+    ports:
+      - "9870:9870"
+    env_file:
+      - ./hadoop.env
+    environment:
+      ENSURE_NAMENODE_DIR: "/tmp/hadoop-root/dfs/name"
+    volumes:
+      - ./data:/data
+      - ./target:/job
+
+  datanode:
+    image: apache/hadoop:3.4.1
+    command: ["hdfs", "datanode"]
+    env_file:
+      - ./hadoop.env
+
+  resourcemanager:
+    image: apache/hadoop:3.4.1
+    hostname: resourcemanager
+    command: ["yarn", "resourcemanager"]
+    ports:
+      - "8088:8088"
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - ./data:/data
+      - ./target:/job
+
+  nodemanager:
+    image: apache/hadoop:3.4.1
+    command: ["yarn", "nodemanager"]
+    env_file:
+      - ./hadoop.env
