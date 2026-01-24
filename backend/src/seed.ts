@@ -260,7 +260,11 @@ async function main() {
   const reduction = 1 - candidates.length / allPairs;
   console.log(`blocking: ${candidates.length} candidates of ${allPairs} possible (${(reduction * 100).toFixed(1)}% fewer), recall ${(recall * 100).toFixed(1)}%`);
 
-  // Score every candidate with the engine; keep the ones worth a steward's time.
+  // Score every candidate with the engine; keep the ones worth a steward's time, which
+  // the engine itself decides: anything it does not label "no-match" is at or above the
+  // review threshold. The engine's bands are the single source of truth for that line,
+  // so we never hard-code a separate number here.
+  // @spec BLOCK-005
   console.log("scoring candidates...");
   const kept: {
     record_a_id: number; record_b_id: number; score: number; band: string;
@@ -271,7 +275,7 @@ async function main() {
     const rb = recById.get(c.b_id);
     if (!ra || !rb) continue;
     const result = await scorePair(asPatient(ra), asPatient(rb));
-    if (result.score < 0.75) continue;
+    if (result.label === "no-match") continue;
     kept.push({
       record_a_id: c.a_id, record_b_id: c.b_id,
       score: result.score, band: result.label,
