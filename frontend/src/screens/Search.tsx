@@ -28,6 +28,7 @@ export default function Search() {
         <input
           autoFocus
           defaultValue={q}
+          aria-label="Search patients by name or MRN"
           onChange={(e) => setParams(e.target.value ? { q: e.target.value } : {})}
           placeholder="Try a last name, for example Smith, or an MRN"
           className="h-11 w-full rounded-lg border bg-surface pl-10 pr-4 text-[15px] text-ink placeholder:text-ink-3 focus-ring"

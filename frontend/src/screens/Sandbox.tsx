@@ -23,10 +23,10 @@ function RecordCard({ title, record, onChange }: { title: string; record: Patien
       <div className="mb-3 text-[13px] font-semibold text-ink">{title}</div>
       <div className="grid grid-cols-2 gap-3">
         {FIELDS.map((f) => (
-          <div key={f} className={cn("flex flex-col gap-1", f === "address" && "col-span-2")}>
-            <label className="text-[11px] font-medium uppercase tracking-wide text-ink-3">{FIELD_LABELS[f]}</label>
-            <Input value={record[f]} onChange={(e) => onChange({ ...record, [f]: e.target.value })} />
-          </div>
+          <label key={f} className={cn("flex flex-col gap-1", f === "address" && "col-span-2")}>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-3">{FIELD_LABELS[f]}</span>
+            <Input value={record[f]} onChange={(e) => onChange({ ...record, [f]: e.target.value })} aria-label={FIELD_LABELS[f]} />
+          </label>
         ))}
       </div>
     </Card>

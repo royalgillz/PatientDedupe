@@ -14,7 +14,8 @@
 
   --color-ink: #231e1a;
   --color-ink-2: #595348;
-  --color-ink-3: #8a8475;
+  /* darkened from #8a8475 to clear WCAG AA contrast on the light surfaces */
+  --color-ink-3: #6f6857;
 
   --color-brand: #0e7c7b;
   --color-brand-hover: #0b6261;
@@ -22,11 +23,13 @@
   --color-brand-subtle: #e3f2ef;
   --color-jade: #16b8a6;
 
-  --color-match: #15803d;
+  /* the confidence colors, darkened so their text clears AA on white and on their own
+     subtle backgrounds */
+  --color-match: #136e33;
   --color-match-subtle: #e7f3ea;
-  --color-review: #b45309;
+  --color-review: #985108;
   --color-review-subtle: #fbf0dc;
-  --color-miss: #b42318;
+  --color-miss: #a81f14;
   --color-miss-subtle: #fbe9e6;
 
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;

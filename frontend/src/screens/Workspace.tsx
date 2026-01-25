@@ -171,13 +171,13 @@ function DecisionDialog({
         <div className="mt-4 space-y-3">
           <div>
             <label className="mb-1 block text-[12px] font-medium text-ink-2">Reason code</label>
-            <Select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} className="w-full">
+            <Select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} aria-label="Reason code" className="w-full">
               {REASON_CODES[action].map((r) => <option key={r}>{r}</option>)}
             </Select>
           </div>
           <div>
             <label className="mb-1 block text-[12px] font-medium text-ink-2">Note (recorded in the audit log)</label>
-            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional context for the audit trail" />
+            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note for the audit trail" placeholder="Optional context for the audit trail" />
           </div>
         </div>
 
@@ -409,10 +409,11 @@ export default function Workspace() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
+              aria-label="Filter the queue by name or MRN"
               placeholder="Filter by name or MRN"
               className="h-8 flex-1 rounded-md border bg-app px-2.5 text-[13px] text-ink placeholder:text-ink-3 focus-ring"
             />
-            <Select value={band} onChange={(e) => setBand(e.target.value)} className="h-8 text-[13px]">
+            <Select value={band} onChange={(e) => setBand(e.target.value)} aria-label="Filter by confidence band" className="h-8 text-[13px]">
               <option value="">All bands</option>
               <option value="review">Needs review</option>
               <option value="match">Likely match</option>

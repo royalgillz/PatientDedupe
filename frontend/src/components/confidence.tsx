@@ -34,7 +34,7 @@ export function ConfidenceBadge({ score, band }: { score: number; band: Band }) 
   return (
     <Badge tone={tone} className="gap-2">
       <span className={cn("size-1.5 rounded-full", FILL[tone])} />
-      {bandLabel[band]} <span className="tnum opacity-80">· {score.toFixed(2)}</span>
+      {bandLabel[band]} <span className="tnum">· {score.toFixed(2)}</span>
     </Badge>
   );
 }
