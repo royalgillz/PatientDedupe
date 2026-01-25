@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, Check, ChevronLeft, HelpCircle, Inbox, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
 import { ConfidenceBadge, simTone } from "@/components/confidence";
 import { Badge } from "@/components/ui/badge";
@@ -201,6 +202,11 @@ function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () =
   const reasonsByField = useMemo(() => Object.fromEntries(pair.reasons.map((r) => [r.field, r])), [pair.reasons]);
   const { agree, conflict } = whySummary(pair.reasons);
 
+  // Single-key decisions, so a steward never needs the mouse to work the queue.
+  useHotkeys("m", () => current && setAction("merge"), [current]);
+  useHotkeys("n", () => current && setAction("not_a_match"), [current]);
+  useHotkeys("i", () => current && setAction("need_info"), [current]);
+
   const conflictText = conflict.length
     ? ` ${conflict.join(" and ")} ${conflict.length > 1 ? "differ" : "differs"}.`
     : "";
@@ -346,7 +352,7 @@ function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () =
   );
 }
 
-// @spec CONSOLE-001, CONSOLE-002, CONSOLE-003, CONSOLE-004, CONSOLE-005, CONSOLE-008
+// @spec CONSOLE-001, CONSOLE-002, CONSOLE-003, CONSOLE-004, CONSOLE-005, CONSOLE-008, CONSOLE-011
 export default function Workspace() {
   const [band, setBand] = useState("review");
   const [q, setQ] = useState("");
@@ -376,6 +382,16 @@ export default function Workspace() {
     const next = queue[idx + 1] ?? queue[idx - 1] ?? null;
     setSelectedId(next ? next.id : null);
   };
+
+  // j/k move through the queue, like a keyboard-first issue tracker.
+  useHotkeys("j", () => {
+    const idx = queue.findIndex((p) => p.id === selectedId);
+    if (queue[idx + 1]) setSelectedId(queue[idx + 1].id);
+  }, [queue, selectedId]);
+  useHotkeys("k", () => {
+    const idx = queue.findIndex((p) => p.id === selectedId);
+    if (queue[idx - 1]) setSelectedId(queue[idx - 1].id);
+  }, [queue, selectedId]);
 
   return (
     <div className="flex h-full flex-col md:flex-row">

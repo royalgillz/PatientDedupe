@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { CommandPalette } from "@/components/CommandPalette";
 import { Logo, LogoMark } from "@/components/Logo";
 import { api, type DashboardData } from "@/lib/api";
 import { useReviewer } from "@/lib/reviewer";
@@ -133,8 +134,11 @@ export function AppShell() {
             <input
               name="q"
               placeholder="Search patients by name or MRN"
-              className="h-9 w-full rounded-md border bg-app pl-9 pr-3 text-sm text-ink placeholder:text-ink-3 focus-ring"
+              className="h-9 w-full rounded-md border bg-app pl-9 pr-14 text-sm text-ink placeholder:text-ink-3 focus-ring"
             />
+            <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border bg-surface px-1.5 py-0.5 text-[11px] font-medium text-ink-3">
+              ⌘K
+            </kbd>
           </form>
 
           <div className="ml-auto flex items-center gap-2.5">
@@ -160,6 +164,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette />
     </div>
   );
 }

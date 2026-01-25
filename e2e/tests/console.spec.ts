@@ -87,6 +87,23 @@ test("the dashboard bulk auto-merges the eligible pairs", async ({ page }) => {
   await expect(page.getByText(/Auto-merged/)).toBeVisible();
 });
 
+// @spec CONSOLE-011
+test("the command palette navigates with the keyboard", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("body").press("Control+k");
+  await expect(page.getByPlaceholder("Jump to...")).toBeVisible();
+  await page.getByText("Go to Audit log").click();
+  await expect(page).toHaveURL(/\/audit/);
+});
+
+// @spec CONSOLE-011
+test("single-key shortcuts open a decision from the queue", async ({ page }) => {
+  await page.goto("/queue");
+  await expect(page.getByText("Record A", { exact: true })).toBeVisible(); // a pair is open
+  await page.locator("body").press("m");
+  await expect(page.getByText("Surviving golden record")).toBeVisible();
+});
+
 // @spec CONSOLE-007
 test("the audit log shows a decision with its reviewer", async ({ page }) => {
   await page.goto("/queue");
