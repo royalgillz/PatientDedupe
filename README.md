@@ -35,9 +35,15 @@ The console is the product; the matching engine is the service underneath it.
 - **Review queue + adjudication** - a ranked queue (defaulting to the cases that need
   a human), with a side-by-side field diff (green agree, amber partial, red conflict),
   a reason-aware recommendation, a golden-record survivorship preview on merge, and
-  decide-and-advance.
-- **Audit log** - who decided what, when, and why. No merge is anonymous.
+  decide-and-advance. It is keyboard-first: a Cmd/Ctrl+K command palette jumps between
+  screens, and j/k move through the queue while m/n/i merge, reject, or flag.
+- **Audit log** - who decided what, when, and why. No merge is anonymous, and every merge
+  is reversible: an unmerge restores the records and reopens the pair.
+- **Bulk auto-merge** of the high-confidence (>= 0.95) pairs in one identified action.
 - **Search**, and a **Sandbox** that runs the engine live in your browser.
+
+The screens carry no serious or critical accessibility violations (WCAG 2 AA), checked by
+axe in CI.
 
 ![Dashboard](assets/screenshots/app-dashboard.png)
 
@@ -260,10 +266,11 @@ Every layer has tests that cite the specs they verify:
   search, and asserting the blocking layer only pairs key-sharing records, rides
   functional indexes, and captures the known duplicates.
 - **Review console** - Playwright end-to-end tests run the whole stack and exercise the
-  five safety-critical flows: the queue loads with the score-and-reason breakdown; a
+  five safety-critical flows (the queue loads with the score-and-reason breakdown; a
   merge previews the surviving golden record then writes it and an audit row; not-a-match
-  suppresses the pair; the band filter narrows the queue; and no merge is possible without
-  an acting reviewer.
+  suppresses the pair; the band filter narrows the queue; no merge is possible without an
+  acting reviewer), plus unmerge, bulk auto-merge, and the keyboard palette. An axe-core
+  test asserts no serious or critical accessibility violations on every screen.
 - **FHIR and analytics** - JUnit, with the wasm engine run in the JVM, the blocking query
   against a real Postgres, and the HiveQL twin checked against the MapReduce result.
 
