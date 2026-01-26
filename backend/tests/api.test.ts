@@ -36,6 +36,32 @@ it("queue returns pending pairs with both records and the reasons, sorted by sco
   expect(rows[0].reasons).toBeTruthy();
 });
 
+// @spec API-013
+it("queue and pair never expose the synthetic ground truth, and attach survivorship", async () => {
+  const rows = await (await get("/api/queue")).json();
+  for (const r of rows) {
+    expect(r.is_true_duplicate).toBeUndefined();
+    expect(r.record_a.person_key).toBeUndefined();
+    expect(r.record_b.person_key).toBeUndefined();
+    expect(r.survivorship.fields.length).toBeGreaterThan(0);
+  }
+  const one = await (await get(`/api/pairs/${fx.pairs.match}`)).json();
+  expect(one.is_true_duplicate).toBeUndefined();
+  expect(one.record_a.person_key).toBeUndefined();
+  expect(one.survivorship.identifiers.length).toBeGreaterThan(0);
+});
+
+// @spec API-013, API-003
+it("the survivorship previewed on the queue is exactly what a merge writes", async () => {
+  const [pair] = await (await get(`/api/queue?band=match`)).json();
+  const preview = pair.survivorship;
+  await post(`/api/pairs/${fx.pairs.match}/decision`, { action: "merge", reviewerId: fx.reviewerId });
+  const [golden] = await sql`select fields from golden_records where pair_id = ${fx.pairs.match}`;
+  expect(golden.fields).toEqual(preview);
+  // identifiers keep both member MRNs rather than picking the longer string
+  expect(golden.fields.identifiers.map((i: { mrn: string }) => i.mrn).sort()).toEqual(["CER-1001", "EPI-1001"]);
+});
+
 // @spec API-001
 it("queue filters by band, minimum score, and free-text name", async () => {
   const byBand = await (await get("/api/queue?band=match")).json();
@@ -136,7 +162,7 @@ it("unmerge restores prior person_keys, removes the golden record, and reopens t
   await post(`/api/pairs/${fx.pairs.reviewFalse}/decision`, { action: "merge", reviewerId: fx.reviewerId });
   expect(await personKey(fx.ids.c1)).not.toBe(before); // relinked to a1's person on merge
 
-  const res = await post(`/api/pairs/${fx.pairs.reviewFalse}/unmerge`, { reviewerId: fx.reviewerId });
+  const res = await post(`/api/pairs/${fx.pairs.reviewFalse}/unmerge`, { reviewerId: fx.leadId });
   expect(res.status).toBe(200);
   expect(await personKey(fx.ids.c1)).toBe(before); // restored
   expect(await sql`select 1 from golden_records where pair_id = ${fx.pairs.reviewFalse}`).toHaveLength(0);
@@ -157,11 +183,51 @@ it("rejects an unmerge with no reviewer (no anonymous unmerges)", async () => {
 
 // @spec API-011
 it("bulk auto-merge merges every pending match-band pair", async () => {
-  const res = await post(`/api/auto-merge`, { reviewerId: fx.reviewerId });
+  const res = await post(`/api/auto-merge`, { reviewerId: fx.leadId });
   expect(res.status).toBe(200);
   const body = await res.json();
   expect(body.merged).toBe(1); // the fixture has one match-band pair
   const [pair] = await sql`select status from candidate_pairs where id = ${fx.pairs.match}`;
   expect(pair.status).toBe("merged");
   expect(await sql`select 1 from golden_records where pair_id = ${fx.pairs.match}`).toHaveLength(1);
+});
+
+// @spec API-011, API-010
+it("bulk auto-merge and unmerge require a lead reviewer", async () => {
+  const bulk = await post(`/api/auto-merge`, { reviewerId: fx.reviewerId }); // a steward
+  expect(bulk.status).toBe(403);
+  expect((await sql`select 1 from golden_records`).length).toBe(0); // nothing merged
+
+  await post(`/api/pairs/${fx.pairs.match}/decision`, { action: "merge", reviewerId: fx.reviewerId });
+  const un = await post(`/api/pairs/${fx.pairs.match}/unmerge`, { reviewerId: fx.reviewerId }); // a steward
+  expect(un.status).toBe(403);
+  const [pair] = await sql`select status from candidate_pairs where id = ${fx.pairs.match}`;
+  expect(pair.status).toBe("merged"); // unchanged
+});
+
+// @spec API-002
+it("rejects a decision on an already-decided pair with 409, not a 500", async () => {
+  await post(`/api/pairs/${fx.pairs.match}/decision`, { action: "merge", reviewerId: fx.reviewerId });
+  const again = await post(`/api/pairs/${fx.pairs.match}/decision`, { action: "merge", reviewerId: fx.reviewerId });
+  expect(again.status).toBe(409);
+  expect(await sql`select 1 from golden_records where pair_id = ${fx.pairs.match}`).toHaveLength(1); // still one
+});
+
+// @spec API-012
+it("reopen returns a not-a-match pair to the pending queue with an audit row", async () => {
+  await post(`/api/pairs/${fx.pairs.reviewFalse}/decision`, { action: "not_a_match", reviewerId: fx.reviewerId });
+  const res = await post(`/api/pairs/${fx.pairs.reviewFalse}/reopen`, { reviewerId: fx.reviewerId });
+  expect(res.status).toBe(200);
+  const [pair] = await sql`select status from candidate_pairs where id = ${fx.pairs.reviewFalse}`;
+  expect(pair.status).toBe("pending");
+  const [audit] = await sql`select action from audit_log where pair_id = ${fx.pairs.reviewFalse} and action = 'reopen'`;
+  expect(audit).toBeTruthy();
+});
+
+// @spec API-012
+it("reopen rejects a pending pair (nothing to reopen) and an anonymous caller", async () => {
+  const anon = await post(`/api/pairs/${fx.pairs.match}/reopen`, {});
+  expect(anon.status).toBe(400);
+  const pending = await post(`/api/pairs/${fx.pairs.match}/reopen`, { reviewerId: fx.reviewerId });
+  expect(pending.status).toBe(409);
 });
