@@ -148,10 +148,11 @@ export function AppShell() {
               <select
                 value={current?.id ?? ""}
                 onChange={(e) => setCurrentId(Number(e.target.value))}
+                aria-label="Acting as reviewer"
                 className="h-8 max-w-[120px] rounded-md border bg-surface px-2 text-[13px] font-medium text-ink focus-ring"
               >
                 {reviewers.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>{r.name}{r.role === "lead" ? " (lead)" : ""}</option>
                 ))}
               </select>
             </label>

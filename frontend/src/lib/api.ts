@@ -15,7 +15,6 @@ export interface SourceRecord {
   city: string;
   state: string;
   zip: string;
-  person_key: number | null;
   created_at: string;
 }
 
@@ -26,16 +25,37 @@ export interface FieldScore {
   detail: string;
 }
 
+// The golden record a merge would produce, computed by the server so the preview here
+// is exactly what gets written.
+export interface SurvivorEntry {
+  field: string;
+  value: string;
+  source: string;
+  conflict: boolean;
+  alt?: { value: string; source: string };
+}
+export interface Survivorship {
+  fields: SurvivorEntry[];
+  identifiers: { source: string; mrn: string }[];
+}
+
+export type PairStatus = "pending" | "merged" | "not_a_match" | "need_info";
+
 export interface Pair {
   id: number;
   score: number;
   band: Band;
-  status: "pending" | "merged" | "not_a_match" | "need_info";
-  is_true_duplicate: boolean | null;
+  status: PairStatus;
   created_at: string;
   reasons: FieldScore[];
   record_a: SourceRecord;
   record_b: SourceRecord;
+  survivorship: Survivorship;
+}
+
+export interface RecordDetail {
+  record: SourceRecord;
+  linked: SourceRecord[];
 }
 
 export interface Reviewer {
@@ -81,6 +101,7 @@ export interface AuditEntry {
   score: number | null;
   reason_code: string | null;
   note: string | null;
+  pair_status: PairStatus | null;
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -107,13 +128,15 @@ export const api = {
   reviewers: () => get<Reviewer[]>("/reviewers"),
   audit: () => get<AuditEntry[]>("/audit?limit=300"),
   search: (q: string) => get<SourceRecord[]>(`/search?q=${encodeURIComponent(q)}`),
+  record: (id: number) => get<RecordDetail>(`/records/${id}`),
   pair: (id: number) => get<Pair>(`/pairs/${id}`),
-  queue: (params: { status?: string; minScore?: number; band?: string; q?: string }) => {
+  queue: (params: { status?: string; minScore?: number; band?: string; q?: string; limit?: number }) => {
     const sp = new URLSearchParams();
     if (params.status) sp.set("status", params.status);
     if (params.minScore != null) sp.set("minScore", String(params.minScore));
     if (params.band) sp.set("band", params.band);
     if (params.q) sp.set("q", params.q);
+    if (params.limit != null) sp.set("limit", String(params.limit));
     return get<Pair[]>(`/queue?${sp.toString()}`);
   },
   decide: async (
@@ -133,8 +156,17 @@ export const api = {
   },
   unmerge: (pairId: number, reviewerId: number, note?: string) =>
     post<{ ok: boolean; status: string }>(`/pairs/${pairId}/unmerge`, { reviewerId, note }),
+  reopen: (pairId: number, reviewerId: number, note?: string) =>
+    post<{ ok: boolean; status: string }>(`/pairs/${pairId}/reopen`, { reviewerId, note }),
   autoMerge: (reviewerId: number) =>
     post<{ ok: boolean; merged: number }>("/auto-merge", { reviewerId }),
+};
+
+export const STATUS_LABEL: Record<PairStatus, string> = {
+  pending: "Pending",
+  need_info: "Need info",
+  not_a_match: "Not a match",
+  merged: "Merged",
 };
 
 export const bandLabel: Record<Band, string> = {

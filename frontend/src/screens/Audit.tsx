@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { ScrollText, Undo2 } from "lucide-react";
+import { AlertTriangle, ScrollText, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -11,32 +11,29 @@ import { formatDateTime, relativeTime } from "@/lib/format";
 import { useReviewer } from "@/lib/reviewer";
 import { cn } from "@/lib/utils";
 
-const ACTION_TONE = { merge: "match", not_a_match: "miss", need_info: "review", unmerge: "neutral" } as const;
+const ACTION_TONE = { merge: "match", not_a_match: "miss", need_info: "review", unmerge: "neutral", reopen: "neutral" } as const;
 const ACTION_LABEL: Record<string, string> = {
   merge: "Merged",
   not_a_match: "Not a match",
   need_info: "Need info",
   unmerge: "Unmerged",
+  reopen: "Reopened",
 };
 
 const col = createColumnHelper<AuditEntry>();
 
-// @spec CONSOLE-007, CONSOLE-009
+// @spec CONSOLE-007, CONSOLE-009, CONSOLE-015
 export default function Audit() {
   const { current } = useReviewer();
+  const isLead = current?.role === "lead";
   const qc = useQueryClient();
-  const { data = [], isLoading } = useQuery({ queryKey: ["audit"], queryFn: api.audit });
+  const { data = [], isLoading, isError, refetch } = useQuery({ queryKey: ["audit"], queryFn: api.audit });
   const [target, setTarget] = useState<AuditEntry | null>(null);
 
-  // A pair is currently merged when its most recent action (the audit is newest-first) is
-  // a merge; only then does reversing it make sense.
-  const latestAction = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const e of data) if (e.pair_id != null && !m.has(e.pair_id)) m.set(e.pair_id, e.action);
-    return m;
-  }, [data]);
+  // Whether a merge can still be reversed comes from the pair's live status, carried on
+  // the row by the API, not from scanning the (possibly truncated) audit window.
   const canUnmerge = (e: AuditEntry) =>
-    e.action === "merge" && e.pair_id != null && latestAction.get(e.pair_id) === "merge";
+    e.action === "merge" && e.pair_id != null && e.pair_status === "merged";
 
   const unmerge = useMutation({
     mutationFn: (e: AuditEntry) => api.unmerge(e.pair_id!, current!.id),
@@ -79,7 +76,8 @@ export default function Audit() {
             <Button
               variant="ghost"
               className="h-7 px-2 text-[12px]"
-              disabled={!current}
+              disabled={!isLead}
+              title={isLead ? undefined : "A lead reviewer is required to reverse a merge"}
               onClick={() => setTarget(c.row.original)}
               aria-label={`Unmerge TASK-${String(c.row.original.pair_id).padStart(4, "0")}`}
             >
@@ -89,7 +87,7 @@ export default function Audit() {
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [latestAction, current],
+    [current, isLead],
   );
 
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
@@ -117,6 +115,14 @@ export default function Audit() {
           <tbody>
             {isLoading ? (
               <tr><td colSpan={columns.length} className="px-4 py-10 text-center text-ink-3">Loading...</td></tr>
+            ) : isError ? (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-12 text-center">
+                  <AlertTriangle className="mx-auto mb-2 size-6 text-miss" />
+                  <div className="mb-3 text-[13px] text-ink-2">Could not load the audit log.</div>
+                  <Button variant="outline" onClick={() => refetch()}>Retry</Button>
+                </td>
+              </tr>
             ) : data.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-12 text-center">

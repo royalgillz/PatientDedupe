@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, ArrowUpRight, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -20,23 +20,13 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { api, type Band } from "@/lib/api";
 import { pct } from "@/lib/format";
 import { useReviewer } from "@/lib/reviewer";
+import { axisInk, bandColors, brandTeal } from "@/lib/theme";
 
-const BAND_COLOR: Record<Band, string> = {
-  match: "#15803d",
-  review: "#b45309",
-  "no-match": "#b42318",
-};
 const BAND_NAME: Record<Band, string> = {
   match: "Likely match",
   review: "Needs review",
   "no-match": "Unlikely",
 };
-
-function bucketColor(bucket: number) {
-  if (bucket >= 0.9) return BAND_COLOR.match;
-  if (bucket >= 0.7) return BAND_COLOR.review;
-  return BAND_COLOR["no-match"];
-}
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -48,12 +38,23 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-// @spec CONSOLE-006, CONSOLE-010
+// @spec CONSOLE-006, CONSOLE-010, CONSOLE-015
 export default function Dashboard() {
-  const { data, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: api.dashboard });
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: api.dashboard,
+    refetchInterval: 30_000,
+  });
   const { current } = useReviewer();
+  const isLead = current?.role === "lead";
   const qc = useQueryClient();
   const [confirmBulk, setConfirmBulk] = useState(false);
+
+  // Confidence colors come from the CSS tokens so the charts match the badges.
+  const BAND_COLOR = useMemo(() => bandColors(), []);
+  const bucketColor = (bucket: number) =>
+    bucket >= 0.9 ? BAND_COLOR.match : bucket >= 0.7 ? BAND_COLOR.review : BAND_COLOR["no-match"];
+  const tick = useMemo(() => ({ fontSize: 11, fill: axisInk() }), []);
 
   const bulk = useMutation({
     mutationFn: () => api.autoMerge(current!.id),
@@ -78,7 +79,13 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {isLoading || !data ? (
+      {isError ? (
+        <Card className="flex flex-col items-center gap-3 p-10 text-center">
+          <AlertTriangle className="size-7 text-miss" />
+          <div className="text-[14px] font-medium text-ink">Could not load the index overview.</div>
+          <Button variant="outline" onClick={() => refetch()}>Retry</Button>
+        </Card>
+      ) : isLoading || !data ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {[0, 1, 2].map((i) => <Card key={i} className="h-28 animate-pulse" />)}
         </div>
@@ -125,14 +132,22 @@ export default function Dashboard() {
                   <Button
                     variant="outline"
                     className="mt-3 h-8 self-start text-[12.5px]"
-                    disabled={!current}
+                    disabled={!isLead}
+                    title={isLead ? undefined : "A lead reviewer is required for bulk auto-merge"}
                     onClick={() => setConfirmBulk(true)}
                   >
                     <Sparkles className="size-3.5" /> Auto-merge all
                   </Button>
                 )}
+                {data.autoMergeEligible > 0 && !isLead && (
+                  <div className="mt-1.5 text-[11px] text-ink-3">Lead role required</div>
+                )}
               </Card>
-              <Stat label="Est. duplicate rate" value={pct(data.duplicateRate)} sub="records beyond unique people" />
+              <Card className="p-4" title="Share of source records that are duplicates of an existing patient: 1 - unique people / total records. It rises as more duplicates are confirmed.">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Est. duplicate rate</div>
+                <div className="tnum mt-2 text-2xl font-semibold tracking-tight text-ink">{pct(data.duplicateRate)}</div>
+                <div className="mt-0.5 text-[12px] text-ink-3">records beyond unique people</div>
+              </Card>
             </div>
           </div>
 
@@ -169,8 +184,8 @@ export default function Dashboard() {
               <div className="mt-4 h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.histogram} margin={{ left: -18, right: 8, top: 4 }}>
-                    <XAxis dataKey="bucket" tickFormatter={(b) => Number(b).toFixed(2)} tick={{ fontSize: 11, fill: "#8a8475" }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: "#8a8475" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <XAxis dataKey="bucket" tickFormatter={(b) => Number(b).toFixed(2)} tick={tick} axisLine={false} tickLine={false} />
+                    <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
                     <Tooltip
                       cursor={{ fill: "rgba(0,0,0,0.04)" }}
                       contentStyle={{ borderRadius: 8, border: "1px solid #e8e1d5", fontSize: 12 }}
@@ -214,10 +229,10 @@ export default function Dashboard() {
             <div className="mt-4 h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.bySource} layout="vertical" margin={{ left: 28, right: 16 }}>
-                  <XAxis type="number" tick={{ fontSize: 11, fill: "#8a8475" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <XAxis type="number" tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
                   <YAxis type="category" dataKey="source_system" width={90} tick={{ fontSize: 12, fill: "#595348" }} axisLine={false} tickLine={false} />
                   <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} contentStyle={{ borderRadius: 8, border: "1px solid #e8e1d5", fontSize: 12 }} />
-                  <Bar dataKey="n" radius={[0, 4, 4, 0]} fill="#0e7c7b" barSize={18} />
+                  <Bar dataKey="n" radius={[0, 4, 4, 0]} fill={brandTeal()} barSize={18} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

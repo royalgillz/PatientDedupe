@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight, Check, ChevronLeft, HelpCircle, Inbox, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Check, ChevronLeft, HelpCircle, Inbox, RotateCcw, Sparkles, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ConfidenceBadge, simTone } from "@/components/confidence";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Select, Textarea } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api, type Band, type FieldScore, type Pair, type SourceRecord } from "@/lib/api";
+import { api, STATUS_LABEL, type Band, type FieldScore, type Pair, type PairStatus, type SourceRecord, type Survivorship } from "@/lib/api";
 import { FIELD_LABELS, formatDate, formatDateTime, relativeTime } from "@/lib/format";
 import { useReviewer } from "@/lib/reviewer";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,8 @@ import { cn } from "@/lib/utils";
 const COMPARE_FIELDS = ["first_name", "last_name", "dob", "gender", "address", "city", "zip", "mrn", "source_system"];
 const TONE_TEXT = { match: "text-match", review: "text-review", miss: "text-miss" } as const;
 const TONE_FILL = { match: "bg-match", review: "bg-review", miss: "bg-miss" } as const;
+const PAGE_SIZE = 200;
+const STATUS_TABS: PairStatus[] = ["pending", "need_info", "not_a_match", "merged"];
 
 const REASON_CODES: Record<string, string[]> = {
   merge: ["Same person, confident", "Same person, reconciled conflicts", "Matched on identifiers"],
@@ -106,13 +109,45 @@ function whySummary(reasons: FieldScore[]) {
   return { agree, conflict };
 }
 
-function survivorship(a: SourceRecord, b: SourceRecord) {
-  return COMPARE_FIELDS.filter((f) => f !== "source_system" && f !== "mrn").map((f) => {
-    const av = (a as unknown as Record<string, string>)[f] ?? "";
-    const bv = (b as unknown as Record<string, string>)[f] ?? "";
-    const useA = av.length >= bv.length;
-    return { field: f, value: useA ? av : bv, source: useA ? a.source_system : b.source_system };
-  });
+// The exact golden record the server would write, handed back by the API so this
+// preview cannot drift from what is saved.
+function SurvivorPreview({ surv }: { surv: Survivorship }) {
+  const hasConflict = surv.fields.some((s) => s.conflict);
+  return (
+    <div className="mt-4 rounded-md border bg-app">
+      <div className="border-b px-3 py-2 text-[12px] font-semibold uppercase tracking-wide text-ink-3">
+        Surviving golden record
+      </div>
+      {hasConflict && (
+        <div className="flex items-center gap-2 border-b bg-miss-subtle/60 px-3 py-2 text-[12px] text-miss">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          A critical field disagrees between the records. Confirm it before merging.
+        </div>
+      )}
+      <div className="divide-y">
+        {surv.fields.map((s) => (
+          <div key={s.field} className="grid grid-cols-[120px_1fr_auto] items-center gap-2 px-3 py-1.5">
+            <span className="text-[12px] text-ink-3">{FIELD_LABELS[s.field] ?? s.field}</span>
+            <span className={cn("text-[13px]", s.conflict ? "text-miss" : "text-ink")}>
+              {(s.field === "dob" ? formatDate(s.value) : s.value) || "-"}
+              {s.conflict && s.alt && (
+                <span className="text-ink-3"> · conflicts with {s.field === "dob" ? formatDate(s.alt.value) : s.alt.value} ({s.alt.source})</span>
+              )}
+            </span>
+            <Badge tone={s.conflict ? "miss" : "neutral"} className="text-[11px]">
+              {s.conflict ? "conflict" : `from ${s.source}`}
+            </Badge>
+          </div>
+        ))}
+        <div className="grid grid-cols-[120px_1fr] items-start gap-2 px-3 py-1.5">
+          <span className="text-[12px] text-ink-3">MRNs kept</span>
+          <span className="tnum font-mono text-[12.5px] text-ink">
+            {surv.identifiers.map((i) => `${i.mrn} (${i.source})`).join(", ") || "-"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DecisionDialog({
@@ -141,7 +176,6 @@ function DecisionDialog({
   });
 
   const title = action === "merge" ? "Merge into one golden record" : action === "not_a_match" ? "Mark as not a match" : "Flag for more information";
-  const surv = action === "merge" ? survivorship(pair.record_a, pair.record_b) : [];
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -151,22 +185,7 @@ function DecisionDialog({
           {fullName(pair.record_a)} ({pair.record_a.source_system}) and {fullName(pair.record_b)} ({pair.record_b.source_system}), score {pair.score.toFixed(2)}.
         </DialogDescription>
 
-        {action === "merge" && (
-          <div className="mt-4 rounded-md border bg-app">
-            <div className="border-b px-3 py-2 text-[12px] font-semibold uppercase tracking-wide text-ink-3">
-              Surviving golden record
-            </div>
-            <div className="divide-y">
-              {surv.map((s) => (
-                <div key={s.field} className="grid grid-cols-[120px_1fr_auto] items-center gap-2 px-3 py-1.5">
-                  <span className="text-[12px] text-ink-3">{FIELD_LABELS[s.field]}</span>
-                  <span className="text-[13px] text-ink">{s.value || "-"}</span>
-                  <Badge tone="neutral" className="text-[11px]">from {s.source}</Badge>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {action === "merge" && <SurvivorPreview surv={pair.survivorship} />}
 
         <div className="mt-4 space-y-3">
           <div>
@@ -196,16 +215,35 @@ function DecisionDialog({
   );
 }
 
-function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () => void; onBack: () => void }) {
+function ReviewDetail({ pair, status, onDecided, onBack }: { pair: Pair; status: PairStatus; onDecided: () => void; onBack: () => void }) {
   const { current } = useReviewer();
+  const qc = useQueryClient();
   const [action, setAction] = useState<Action | null>(null);
   const reasonsByField = useMemo(() => Object.fromEntries(pair.reasons.map((r) => [r.field, r])), [pair.reasons]);
   const { agree, conflict } = whySummary(pair.reasons);
+  const isLead = current?.role === "lead";
+  const pending = status === "pending";
 
-  // Single-key decisions, so a steward never needs the mouse to work the queue.
-  useHotkeys("m", () => current && setAction("merge"), [current]);
-  useHotkeys("n", () => current && setAction("not_a_match"), [current]);
-  useHotkeys("i", () => current && setAction("need_info"), [current]);
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["queue"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
+  const reopen = useMutation({
+    mutationFn: () => api.reopen(pair.id, current!.id),
+    onSuccess: () => { onDecided(); invalidate(); toast.success("Reopened: back in the pending queue."); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const unmerge = useMutation({
+    mutationFn: () => api.unmerge(pair.id, current!.id),
+    onSuccess: () => { onDecided(); invalidate(); toast.success("Merge reversed", { description: "The records are separate again and the pair is back in the queue." }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  // Single-key decisions only make sense on a pending pair.
+  useHotkeys("m", () => pending && current && setAction("merge"), [current, pending]);
+  useHotkeys("n", () => pending && current && setAction("not_a_match"), [current, pending]);
+  useHotkeys("i", () => pending && current && setAction("need_info"), [current, pending]);
 
   const conflictText = conflict.length
     ? ` ${conflict.join(" and ")} ${conflict.length > 1 ? "differ" : "differs"}.`
@@ -226,6 +264,7 @@ function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () =
         </button>
         <div className="flex flex-wrap items-center gap-3">
           <ConfidenceBadge score={pair.score} band={pair.band} />
+          {!pending && <Badge tone="neutral">{STATUS_LABEL[status]}</Badge>}
           <span className="tnum text-[12px] text-ink-3">TASK-{String(pair.id).padStart(4, "0")}</span>
           <span className="text-[12px] text-ink-3">·</span>
           <span className="text-[12px] text-ink-3">{pair.record_a.source_system} ↔ {pair.record_b.source_system}</span>
@@ -233,11 +272,13 @@ function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () =
             opened {relativeTime(pair.created_at)}
           </span>
         </div>
-        <div className={cn("mt-3 flex items-center gap-2 rounded-md px-3 py-2 text-[13px]",
-          r.tone === "match" ? "bg-match-subtle text-match" : r.tone === "review" ? "bg-review-subtle text-review" : "bg-miss-subtle text-miss")}>
-          <Sparkles className="size-4" />
-          {r.text}
-        </div>
+        {pending && (
+          <div className={cn("mt-3 flex items-center gap-2 rounded-md px-3 py-2 text-[13px]",
+            r.tone === "match" ? "bg-match-subtle text-match" : r.tone === "review" ? "bg-review-subtle text-review" : "bg-miss-subtle text-miss")}>
+            <Sparkles className="size-4" />
+            {r.text}
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-4 py-5 md:px-6">
@@ -331,19 +372,34 @@ function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () =
         </Tabs>
       </div>
 
-      {/* Zone 3: action bar */}
+      {/* Zone 3: action bar - adapts to the pair's current status */}
       <div className="flex items-center gap-2 border-t bg-surface px-4 py-3 md:px-6">
         {!current && <span className="text-[12px] text-miss">Select a reviewer to act</span>}
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" disabled={!current} onClick={() => setAction("need_info")}>
-            <HelpCircle className="size-4" /> Need info
-          </Button>
-          <Button variant="outline" disabled={!current} onClick={() => setAction("not_a_match")}>
-            <X className="size-4" /> Not a match
-          </Button>
-          <Button variant="brand" disabled={!current} onClick={() => setAction("merge")}>
-            <Check className="size-4" /> Merge
-          </Button>
+          {pending ? (
+            <>
+              <Button variant="outline" disabled={!current} onClick={() => setAction("need_info")}>
+                <HelpCircle className="size-4" /> Need info
+              </Button>
+              <Button variant="outline" disabled={!current} onClick={() => setAction("not_a_match")}>
+                <X className="size-4" /> Not a match
+              </Button>
+              <Button variant="brand" disabled={!current} onClick={() => setAction("merge")}>
+                <Check className="size-4" /> Merge
+              </Button>
+            </>
+          ) : status === "merged" ? (
+            <>
+              {!isLead && <span className="text-[12px] text-ink-3">Lead role required to reverse a merge</span>}
+              <Button variant="outline" disabled={!isLead || unmerge.isPending} onClick={() => unmerge.mutate()}>
+                <Undo2 className="size-4" /> Unmerge
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" disabled={!current || reopen.isPending} onClick={() => reopen.mutate()}>
+              <RotateCcw className="size-4" /> Reopen into queue
+            </Button>
+          )}
         </div>
       </div>
 
@@ -352,15 +408,31 @@ function ReviewDetail({ pair, onDecided, onBack }: { pair: Pair; onDecided: () =
   );
 }
 
-// @spec CONSOLE-001, CONSOLE-002, CONSOLE-003, CONSOLE-004, CONSOLE-005, CONSOLE-008, CONSOLE-011
+// @spec CONSOLE-001, CONSOLE-002, CONSOLE-003, CONSOLE-004, CONSOLE-005, CONSOLE-008, CONSOLE-011, CONSOLE-013
 export default function Workspace() {
-  const [band, setBand] = useState("review");
-  const [q, setQ] = useState("");
+  const [params, setParams] = useSearchParams();
+  const status = (params.get("status") as PairStatus) || "pending";
+  const band = params.get("band") ?? (status === "pending" ? "review" : "");
+  const q = params.get("q") ?? "";
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
-  const { data: queue = [], isLoading } = useQuery({
-    queryKey: ["queue", band, q],
-    queryFn: () => api.queue({ status: "pending", band: band || undefined, q: q || undefined }),
+  // Filters live in the URL so they survive navigating into a pair and back, and a refresh.
+  const setFilter = (next: { status?: string; band?: string; q?: string }) => {
+    const merged = { status, band, q, ...next };
+    const sp: Record<string, string> = {};
+    if (merged.status && merged.status !== "pending") sp.status = merged.status;
+    if (merged.band) sp.band = merged.band;
+    if (merged.q) sp.q = merged.q;
+    setParams(sp, { replace: true });
+    setLimit(PAGE_SIZE);
+  };
+
+  const { data: queue = [], isLoading, isError, refetch } = useQuery({
+    queryKey: ["queue", status, band, q, limit],
+    queryFn: () => api.queue({ status, band: band || undefined, q: q || undefined, limit }),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
@@ -376,6 +448,7 @@ export default function Workspace() {
   }, [queue, selectedId]);
 
   const selected = queue.find((p) => p.id === selectedId) ?? null;
+  const maybeMore = queue.length >= limit;
 
   const advance = () => {
     const idx = queue.findIndex((p) => p.id === selectedId);
@@ -398,22 +471,38 @@ export default function Workspace() {
       {/* Left: queue rail */}
       <div className={cn("w-full flex-col border-r bg-surface md:w-[380px] md:shrink-0", selected ? "hidden md:flex" : "flex")}>
         <div className="space-y-2.5 border-b px-4 py-3">
+          <h2 className="text-[14px] font-semibold text-ink">Review queue</h2>
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {STATUS_TABS.map((s) => (
+              <button
+                key={s}
+                onClick={() => { setFilter({ status: s }); setSelectedId(null); }}
+                className={cn(
+                  "shrink-0 rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors",
+                  status === s ? "bg-brand-subtle text-brand-ink" : "text-ink-2 hover:bg-subtle",
+                )}
+                aria-pressed={status === s}
+                aria-label={`Show ${STATUS_LABEL[s].toLowerCase()} pairs`}
+              >
+                {STATUS_LABEL[s]}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center justify-between">
-            <h2 className="text-[14px] font-semibold text-ink">Review queue</h2>
             <span className="tnum text-[12px] text-ink-3">
-              {queue.length}{" "}
-              {band === "review" ? "need review" : band === "match" ? "likely match" : band === "no-match" ? "unlikely" : "pending"}
+              {queue.length}
+              {maybeMore ? "+" : ""} {STATUS_LABEL[status].toLowerCase()}
             </span>
           </div>
           <div className="flex gap-2">
             <input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => setFilter({ q: e.target.value })}
               aria-label="Filter the queue by name or MRN"
               placeholder="Filter by name or MRN"
               className="h-8 flex-1 rounded-md border bg-app px-2.5 text-[13px] text-ink placeholder:text-ink-3 focus-ring"
             />
-            <Select value={band} onChange={(e) => setBand(e.target.value)} aria-label="Filter by confidence band" className="h-8 text-[13px]">
+            <Select value={band} onChange={(e) => setFilter({ band: e.target.value })} aria-label="Filter by confidence band" className="h-8 text-[13px]">
               <option value="">All bands</option>
               <option value="review">Needs review</option>
               <option value="match">Likely match</option>
@@ -426,14 +515,30 @@ export default function Workspace() {
             <div className="space-y-2 p-4">
               {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-14 animate-pulse rounded-md bg-subtle" />)}
             </div>
+          ) : isError ? (
+            <div className="p-8 text-center text-[13px] text-miss">
+              <AlertTriangle className="mx-auto mb-2 size-6" />
+              <div className="mb-3">Could not load the queue.</div>
+              <Button variant="outline" onClick={() => refetch()}>Retry</Button>
+            </div>
           ) : queue.length ? (
-            queue.map((p) => (
-              <QueueRow key={p.id} pair={p} active={p.id === selectedId} onClick={() => setSelectedId(p.id)} />
-            ))
+            <>
+              {queue.map((p) => (
+                <QueueRow key={p.id} pair={p} active={p.id === selectedId} onClick={() => setSelectedId(p.id)} />
+              ))}
+              {maybeMore && (
+                <button
+                  onClick={() => setLimit((l) => l + PAGE_SIZE)}
+                  className="w-full border-b px-4 py-3 text-center text-[12.5px] font-medium text-brand hover:bg-subtle"
+                >
+                  Load more
+                </button>
+              )}
+            </>
           ) : (
             <div className="p-8 text-center text-[13px] text-ink-3">
               <Inbox className="mx-auto mb-2 size-6 text-ink-3" />
-              No pending pairs match these filters.
+              No {STATUS_LABEL[status].toLowerCase()} pairs match these filters.
             </div>
           )}
         </div>
@@ -442,7 +547,7 @@ export default function Workspace() {
       {/* Right: detail */}
       <div className={cn("min-w-0 flex-1", selected ? "block" : "hidden md:block")}>
         {selected ? (
-          <ReviewDetail key={selected.id} pair={selected} onDecided={advance} onBack={() => setSelectedId(null)} />
+          <ReviewDetail key={selected.id} pair={selected} status={status} onDecided={advance} onBack={() => setSelectedId(null)} />
         ) : (
           <div className="grid h-full place-items-center text-center">
             <div className="text-ink-3">

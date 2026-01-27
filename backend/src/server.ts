@@ -250,7 +250,13 @@ app.post("/api/auto-merge", async (c) => {
 // @spec API-006
 app.get("/api/audit", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? "200"), 500);
-  const rows = await sql`select * from audit_log order by ts desc limit ${limit}`;
+  // Carry each pair's current status so the console can decide unmerge eligibility from
+  // the live pair state rather than scanning a possibly-truncated audit window.
+  const rows = await sql`
+    select al.*, cp.status as pair_status
+    from audit_log al
+    left join candidate_pairs cp on cp.id = al.pair_id
+    order by al.ts desc limit ${limit}`;
   return c.json(rows);
 });
 

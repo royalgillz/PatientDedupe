@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { ReviewerProvider } from "@/lib/reviewer";
 import Audit from "@/screens/Audit";
 import Dashboard from "@/screens/Dashboard";
+import RecordDetail from "@/screens/RecordDetail";
 import Sandbox from "@/screens/Sandbox";
 import Search from "@/screens/Search";
 import Workspace from "@/screens/Workspace";
@@ -26,6 +27,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Dashboard />} />
               <Route path="/queue" element={<Workspace />} />
               <Route path="/search" element={<Search />} />
+              <Route path="/records/:id" element={<RecordDetail />} />
               <Route path="/sandbox" element={<Sandbox />} />
               <Route path="/audit" element={<Audit />} />
             </Route>
