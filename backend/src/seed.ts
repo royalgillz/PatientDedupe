@@ -3,14 +3,16 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sql } from "./db.js";
 import { scorePair } from "./engine.js";
+import { mergePair } from "./merge.js";
 import type { PatientRecord } from "./types.js";
 
 // Builds a realistic stewardship workload from the Synthea population:
 //  1. load real patients as "source records" spread across several source systems,
 //  2. inject duplicates (messy copies under a different system and MRN) so there is
 //     something to deduplicate, keeping a person_key as ground truth,
-//  3. add hard negatives (different people who look similar),
-//  4. score every pair with the real engine and store it as a pending review task.
+//  3. run the SQL blocking layer and score the candidate pairs; the hard negatives are
+//     the non-duplicate pairs blocking surfaces because they happen to share a key,
+//  4. store every review-worthy pair as a pending task.
 // Deterministic: a fixed seed makes the demo reproducible.
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -18,7 +20,6 @@ const PATIENTS = resolve(here, "../../tools/synthea/output/csv/patients.csv");
 
 const N_BASE = 820;
 const N_DUPES = 240;
-const N_NEGATIVES = 160;
 
 const SOURCE_SYSTEMS = ["Epic ADT", "Cerner", "Lab Feed", "Registration", "Radiology"];
 const NICKNAMES: Record<string, string> = {
@@ -279,7 +280,7 @@ async function main() {
     kept.push({
       record_a_id: c.a_id, record_b_id: c.b_id,
       score: result.score, band: result.label,
-      reasons: sql.json(result.fields),
+      reasons: sql.json(result.fields as unknown as Parameters<typeof sql.json>[0]),
       is_true_duplicate: ra.person_key === rb.person_key,
     });
   }
@@ -300,7 +301,7 @@ async function main() {
   // Backfill a realistic decision history so the audit log and dashboard reflect a
   // queue that has been worked, rather than looking like an empty fixture.
   console.log("backfilling decision history...");
-  const revs = await sql`select id, name from reviewers order by id`;
+  const revs = await sql<{ id: number; name: string }[]>`select id, name from reviewers order by id`;
   const REASONS: Record<string, string[]> = {
     merged: ["Same person, confident", "Matched on identifiers", "Reconciled conflicts"],
     not_a_match: ["Different people", "Same name, different person", "Insufficient similarity"],
@@ -317,11 +318,29 @@ async function main() {
     const ts = new Date(Date.now() - (8 + randInt(13000)) * 60000).toISOString();
     const reason = pick(REASONS[action]);
     const note = action === "merged" ? pick(["", "", "Confirmed against prior visit."]) : pick(NOTES);
-    await sql`update candidate_pairs set status = ${action}, decided_at = ${ts},
-      decided_by = ${reviewer.id}, reason_code = ${reason}, note = ${note} where id = ${pairIds[k]}`;
-    await sql`insert into audit_log (ts, actor, action, pair_id, record_a_id, record_b_id, score, reason_code, note, details)
-      values (${ts}, ${reviewer.name}, ${action === "merged" ? "merge" : action}, ${pairIds[k]},
-              ${w.record_a_id}, ${w.record_b_id}, ${w.score}, ${reason}, ${note || null}, ${sql.json({ band: w.band })})`;
+
+    if (action === "merged") {
+      // Go through the same merge path the API uses, so a backfilled merge is a real,
+      // reversible golden record rather than just a status flip with no record behind it.
+      const ra = recById.get(w.record_a_id)!;
+      const rb = recById.get(w.record_b_id)!;
+      await mergePair(
+        sql,
+        {
+          id: pairIds[k], record_a_id: w.record_a_id, record_b_id: w.record_b_id,
+          score: w.score, band: w.band,
+          record_a: { ...ra, id: w.record_a_id }, record_b: { ...rb, id: w.record_b_id },
+        },
+        reviewer,
+        { reasonCode: reason, note: note || null, at: ts },
+      );
+    } else {
+      await sql`update candidate_pairs set status = ${action}, decided_at = ${ts},
+        decided_by = ${reviewer.id}, reason_code = ${reason}, note = ${note} where id = ${pairIds[k]}`;
+      await sql`insert into audit_log (ts, actor, action, pair_id, record_a_id, record_b_id, score, reason_code, note, details)
+        values (${ts}, ${reviewer.name}, ${action}, ${pairIds[k]},
+                ${w.record_a_id}, ${w.record_b_id}, ${w.score}, ${reason}, ${note || null}, ${sql.json({ band: w.band })})`;
+    }
   }
 
   const bands = kept.reduce<Record<string, number>>((m, r) => {
