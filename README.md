@@ -32,15 +32,31 @@ The console is the product; the matching engine is the service underneath it.
   unique patients, source records, auto-merge-eligible count, duplicate rate, and
   charts for score distribution, queue by confidence band, and records by source
   system.
-- **Review queue + adjudication** - a ranked queue (defaulting to the cases that need
-  a human), with a side-by-side field diff (green agree, amber partial, red conflict),
-  a reason-aware recommendation, a golden-record survivorship preview on merge, and
-  decide-and-advance. It is keyboard-first: a Cmd/Ctrl+K command palette jumps between
-  screens, and j/k move through the queue while m/n/i merge, reject, or flag.
-- **Audit log** - who decided what, when, and why. No merge is anonymous, and every merge
-  is reversible: an unmerge restores the records and reopens the pair.
-- **Bulk auto-merge** of the high-confidence (>= 0.95) pairs in one identified action.
-- **Search**, and a **Sandbox** that runs the engine live in your browser.
+- **Review queue + adjudication** - a status-aware worklist (Pending, Need info, Not a
+  match, Merged) so a flagged or rejected pair is never lost from view, with a
+  side-by-side field diff (green agree, amber partial, red conflict), a reason-aware
+  recommendation, and decide-and-advance. Filters live in the URL, so they survive
+  navigating into a pair and back. The merge preview shows the exact golden record the
+  server will write, computed once on the server: names and address parts keep the more
+  complete value, both source MRNs are retained as identifiers, and a disagreeing birth
+  date or sex is flagged for the steward rather than silently resolved. It is
+  keyboard-first: a Cmd/Ctrl+K command palette jumps between screens, and j/k move
+  through the queue while m/n/i merge, reject, or flag.
+- **Audit log** - who decided what, when, and why. No decision is anonymous. Every
+  decision is recoverable: a lead can reverse a merge (unmerge restores the records and
+  reopens the pair), and any reviewer can reopen a not-a-match or need-info pair back
+  into the queue.
+- **Bulk auto-merge** of the high-confidence (>= 0.95) pairs in one identified action,
+  available to a lead reviewer.
+- **Search** that opens a record detail with the patient's currently linked records,
+  and a **Sandbox** that runs the engine live in your browser.
+
+The console adjudicates blind: the synthetic ground-truth identity (the person key and
+the known-duplicate flag) is kept server-side and never sent to the browser. Access is
+minimum-necessary at a role level (the reversible-but-heavy actions, unmerge and bulk
+auto-merge, are limited to a lead). The acting reviewer is selected in the demo rather
+than authenticated, which is the one deliberate shortcut here; a real deployment would
+put a proper identity provider in front of it.
 
 The screens carry no serious or critical accessibility violations (WCAG 2 AA), checked by
 axe in CI.
@@ -266,11 +282,12 @@ Every layer has tests that cite the specs they verify:
   search, and asserting the blocking layer only pairs key-sharing records, rides
   functional indexes, and captures the known duplicates.
 - **Review console** - Playwright end-to-end tests run the whole stack and exercise the
-  five safety-critical flows (the queue loads with the score-and-reason breakdown; a
-  merge previews the surviving golden record then writes it and an audit row; not-a-match
+  safety-critical flows (the queue loads with the score-and-reason breakdown; a merge
+  previews the surviving golden record then writes it and an audit row; not-a-match
   suppresses the pair; the band filter narrows the queue; no merge is possible without an
-  acting reviewer), plus unmerge, bulk auto-merge, and the keyboard palette. An axe-core
-  test asserts no serious or critical accessibility violations on every screen.
+  acting reviewer), plus lead-only unmerge and bulk auto-merge, the reopen-from-a-status-
+  tab worklist flow, search-to-record-detail, and the keyboard palette. An axe-core test
+  asserts no serious or critical accessibility violations on every screen.
 - **FHIR and analytics** - JUnit, with the wasm engine run in the JVM, the blocking query
   against a real Postgres, and the HiveQL twin checked against the MapReduce result.
 
