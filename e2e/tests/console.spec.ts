@@ -123,6 +123,14 @@ test("a search result opens the record detail with its linked records", async ({
   await expect(page.getByText("Linked records")).toBeVisible();
 });
 
+// @spec CONSOLE-015
+test("a failed load shows an error state, not an empty one", async ({ page }) => {
+  await page.route("**/api/dashboard", (route) => route.fulfill({ status: 500, json: { error: "boom" } }));
+  await page.goto("/");
+  // react-query retries with backoff before giving up, so allow time for the error UI.
+  await expect(page.getByText("Could not load the index overview.")).toBeVisible({ timeout: 20000 });
+});
+
 // @spec CONSOLE-011
 test("the command palette navigates with the keyboard", async ({ page }) => {
   await page.goto("/");
