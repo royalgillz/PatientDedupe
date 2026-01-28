@@ -67,7 +67,17 @@ export default function Audit() {
         cell: (c) => <span className="tnum text-ink-2">{c.getValue() != null ? Number(c.getValue()).toFixed(2) : "-"}</span>,
       }),
       col.accessor("reason_code", { header: "Reason", cell: (c) => <span className="text-ink-2">{c.getValue() ?? "-"}</span> }),
-      col.accessor("note", { header: "Note", cell: (c) => <span className="text-ink-3">{c.getValue() || "-"}</span> }),
+      col.accessor("note", {
+        header: "Note",
+        cell: (c) => {
+          const v = c.getValue();
+          return v ? (
+            <span className="block max-w-[260px] truncate text-ink-3" title={v}>{v}</span>
+          ) : (
+            <span className="text-ink-3">-</span>
+          );
+        },
+      }),
       col.display({
         id: "actions",
         header: "",

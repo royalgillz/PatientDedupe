@@ -1,3 +1,4 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -6,6 +7,8 @@ import {
   Search,
   FlaskConical,
   ShieldCheck,
+  Check,
+  ChevronDown,
   Menu,
   X,
 } from "lucide-react";
@@ -142,23 +145,54 @@ export function AppShell() {
             </kbd>
           </form>
 
-          <div className="ml-auto flex items-center gap-2.5">
-            <label className="flex items-center gap-2 text-[12px] text-ink-3">
-              <span className="hidden sm:inline">Acting as</span>
-              <select
-                value={current?.id ?? ""}
-                onChange={(e) => setCurrentId(Number(e.target.value))}
-                aria-label="Acting as reviewer"
-                className="h-8 max-w-[120px] rounded-md border bg-surface px-2 text-[13px] font-medium text-ink focus-ring"
-              >
-                {reviewers.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}{r.role === "lead" ? " (lead)" : ""}</option>
-                ))}
-              </select>
-            </label>
-            <div className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-[12px] font-semibold text-white">
-              {current ? initials(current.name) : "?"}
-            </div>
+          <div className="ml-auto flex items-center">
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  aria-label="Acting as reviewer"
+                  className="flex h-9 items-center gap-2 rounded-md border bg-surface pl-1 pr-2 transition-colors hover:bg-subtle focus-ring"
+                >
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-[11px] font-semibold text-white">
+                    {current ? initials(current.name) : "?"}
+                  </span>
+                  <span className="hidden text-left leading-none sm:block">
+                    <span className="block text-[10px] uppercase tracking-wide text-ink-3">Acting as</span>
+                    <span className="mt-0.5 block text-[13px] font-medium text-ink">{current?.name ?? "Select reviewer"}</span>
+                  </span>
+                  {current?.role === "lead" && (
+                    <span className="hidden rounded-full bg-brand-subtle px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink sm:inline">
+                      lead
+                    </span>
+                  )}
+                  <ChevronDown className="size-3.5 text-ink-3" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={6}
+                  className="z-[80] min-w-[240px] rounded-lg border bg-surface p-1 shadow-[0_8px_28px_rgba(40,33,20,0.14)]"
+                >
+                  <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Act as reviewer</div>
+                  {reviewers.map((r) => (
+                    <DropdownMenu.Item
+                      key={r.id}
+                      onSelect={() => setCurrentId(r.id)}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-ink outline-none data-[highlighted]:bg-subtle"
+                    >
+                      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-subtle text-[11px] font-semibold text-brand-ink">
+                        {initials(r.name)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate leading-tight">{r.name}</span>
+                        <span className="block text-[11px] capitalize leading-tight text-ink-3">{r.role}</span>
+                      </span>
+                      {current?.id === r.id && <Check className="size-4 shrink-0 text-brand" />}
+                    </DropdownMenu.Item>
+                  ))}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </header>
 

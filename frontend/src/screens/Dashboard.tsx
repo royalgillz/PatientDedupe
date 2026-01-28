@@ -143,10 +143,15 @@ export default function Dashboard() {
                   <div className="mt-1.5 text-[11px] text-ink-3">Lead role required</div>
                 )}
               </Card>
-              <Card className="p-4" title="Share of source records that are duplicates of an existing patient: 1 - unique people / total records. It rises as more duplicates are confirmed.">
+              <Card className="flex flex-col p-4" title="Share of source records that are duplicates of an existing patient: 1 - unique people / total records. It rises as more duplicates are confirmed.">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Est. duplicate rate</div>
                 <div className="tnum mt-2 text-2xl font-semibold tracking-tight text-ink">{pct(data.duplicateRate)}</div>
-                <div className="mt-0.5 text-[12px] text-ink-3">records beyond unique people</div>
+                <div className="mt-auto pt-3">
+                  <div className="h-1.5 rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-review" style={{ width: `${Math.min(data.duplicateRate * 100, 100)}%` }} />
+                  </div>
+                  <div className="mt-1.5 text-[12px] text-ink-3">records beyond unique people</div>
+                </div>
               </Card>
             </div>
           </div>
@@ -164,14 +169,20 @@ export default function Dashboard() {
                   {data.blocking.candidate_pairs.toLocaleString()} of {data.blocking.all_pairs.toLocaleString()} possible pairs
                 </span>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="mt-4 grid grid-cols-2 gap-6">
                 <div>
                   <div className="tnum text-3xl font-semibold text-brand-ink">{(data.blocking.reduction * 100).toFixed(1)}%</div>
-                  <div className="text-[12px] text-ink-3">fewer comparisons</div>
+                  <div className="mt-2 h-1.5 rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-brand" style={{ width: `${data.blocking.reduction * 100}%` }} />
+                  </div>
+                  <div className="mt-1.5 text-[12px] text-ink-3">fewer comparisons</div>
                 </div>
                 <div>
                   <div className="tnum text-3xl font-semibold text-ink">{pct(data.blocking.recall)}</div>
-                  <div className="text-[12px] text-ink-3">of true duplicates still captured</div>
+                  <div className="mt-2 h-1.5 rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-match" style={{ width: `${data.blocking.recall * 100}%` }} />
+                  </div>
+                  <div className="mt-1.5 text-[12px] text-ink-3">of true duplicates still captured</div>
                 </div>
               </div>
             </Card>
@@ -202,15 +213,21 @@ export default function Dashboard() {
             <Card className="p-5">
               <div className="text-[13px] font-semibold text-ink">Queue by confidence band</div>
               <div className="mt-0.5 text-[12px] text-ink-3">Where human judgement is needed.</div>
-              <div className="mt-2 h-[180px]">
+              <div className="relative mt-2 h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={data.byBand} dataKey="n" nameKey="band" innerRadius={48} outerRadius={70} paddingAngle={2} strokeWidth={0}>
                       {data.byBand.map((b) => <Cell key={b.band} fill={BAND_COLOR[b.band]} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e8e1d5", fontSize: 12 }} />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid var(--color-border)", fontSize: 12 }} />
                   </PieChart>
                 </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="tnum text-2xl font-semibold tracking-tight text-ink">
+                    {data.byBand.reduce((s, b) => s + b.n, 0).toLocaleString()}
+                  </span>
+                  <span className="text-[11px] text-ink-3">total pairs</span>
+                </div>
               </div>
               <div className="mt-2 space-y-1.5">
                 {data.byBand.map((b) => (

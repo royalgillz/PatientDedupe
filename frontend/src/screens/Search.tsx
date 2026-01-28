@@ -1,11 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronRight, Search as SearchIcon, User } from "lucide-react";
+import { AlertTriangle, ChevronRight, Copy, Search as SearchIcon, User } from "lucide-react";
+import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { api, type SourceRecord } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+
+// Records that share a name and birth date inside one result set are very likely the
+// same person across systems - exactly the duplicate this product exists to catch - so
+// we surface that hint right in the search results.
+const dupKey = (r: SourceRecord) => `${r.first_name} ${r.last_name} ${r.dob}`.toLowerCase().trim();
 
 // @spec CONSOLE-014, CONSOLE-015
 export default function Search() {
@@ -17,6 +23,12 @@ export default function Search() {
     queryFn: () => api.search(q),
     enabled: q.length > 0,
   });
+
+  const dupKeys = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of data) counts.set(dupKey(r), (counts.get(dupKey(r)) ?? 0) + 1);
+    return new Set([...counts].filter(([, n]) => n > 1).map(([k]) => k));
+  }, [data]);
 
   return (
     <div className="mx-auto max-w-[920px] space-y-5 p-4 md:p-6">
@@ -43,45 +55,54 @@ export default function Search() {
         </div>
       )}
 
-      <div className="space-y-2">
-        {q && isError ? (
-          <div className="rounded-card border bg-surface p-10 text-center">
-            <AlertTriangle className="mx-auto mb-2 size-6 text-miss" />
-            <div className="mb-3 text-[13px] text-ink-2">Search failed. Check the connection and try again.</div>
-            <Button variant="outline" onClick={() => refetch()}>Retry</Button>
-          </div>
-        ) : (
-          data.map((r) => (
-            <Link
-              key={r.id}
-              to={`/records/${r.id}`}
-              className="block focus-ring rounded-card"
-            >
-              <Card className="flex items-center gap-4 p-3.5 transition-colors hover:border-border-strong hover:bg-subtle">
-                <div className="grid size-9 place-items-center rounded-full bg-brand-subtle text-brand-ink">
-                  <User className="size-4" />
+      {q && isError ? (
+        <div className="rounded-card border bg-surface p-10 text-center">
+          <AlertTriangle className="mx-auto mb-2 size-6 text-miss" />
+          <div className="mb-3 text-[13px] text-ink-2">Search failed. Check the connection and try again.</div>
+          <Button variant="outline" onClick={() => refetch()}>Retry</Button>
+        </div>
+      ) : data.length ? (
+        <Card className="divide-y overflow-hidden p-0">
+          {data.map((r) => {
+            const dup = dupKeys.has(dupKey(r));
+            return (
+              <Link
+                key={r.id}
+                to={`/records/${r.id}`}
+                className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-subtle focus-ring"
+              >
+                <div className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-subtle text-brand-ink">
+                  <User className="size-3.5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14px] font-medium text-ink">{r.first_name} {r.last_name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-[13.5px] font-medium text-ink">{r.first_name} {r.last_name}</span>
+                    {dup && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-review-subtle px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-review" title="Another result shares this name and birth date">
+                        <Copy className="size-2.5" /> possible duplicate
+                      </span>
+                    )}
+                  </div>
                   <div className="truncate text-[12px] text-ink-3">
                     DOB {formatDate(r.dob)} · {r.gender} · {r.address}, {r.city} {r.zip}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
+                <div className="hidden shrink-0 text-right sm:block">
                   <Badge tone="neutral">{r.source_system}</Badge>
-                  <span className="tnum text-[11px] text-ink-3">{r.mrn}</span>
                 </div>
+                <span className="tnum hidden w-24 shrink-0 text-right text-[11px] text-ink-3 md:block">{r.mrn}</span>
                 <ChevronRight className="size-4 shrink-0 text-ink-3" />
-              </Card>
-            </Link>
-          ))
-        )}
-        {q && !isLoading && !isError && data.length === 0 && (
+              </Link>
+            );
+          })}
+        </Card>
+      ) : (
+        q && !isLoading && (
           <div className="rounded-card border border-dashed bg-surface p-10 text-center text-[13px] text-ink-3">
             No records match "{q}".
           </div>
-        )}
-      </div>
+        )
+      )}
     </div>
   );
 }

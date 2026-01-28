@@ -17,8 +17,10 @@ const bandSelect = (page: import("@playwright/test").Page) =>
   page.locator('select:has(option[value="match"])');
 
 // Switch the acting reviewer to the seeded lead, needed for the privileged actions.
-const actAsLead = (page: import("@playwright/test").Page) =>
-  page.getByLabel("Acting as reviewer").selectOption({ label: "Test Lead (lead)" });
+const actAsLead = async (page: import("@playwright/test").Page) => {
+  await page.getByLabel("Acting as reviewer").click();
+  await page.getByRole("menuitem", { name: /Test Lead/ }).click();
+};
 
 // @spec CONSOLE-001, CONSOLE-002
 test("the queue loads with pairs and the score-and-reason breakdown", async ({ page }) => {

@@ -40,7 +40,7 @@ function QueueRow({ pair, active, onClick }: { pair: Pair; active: boolean; onCl
     <button
       onClick={onClick}
       className={cn(
-        "w-full border-l-2 border-b px-4 py-3 text-left transition-colors",
+        "w-full border-l-2 border-b px-4 py-2.5 text-left transition-colors",
         active ? "border-l-brand bg-brand-subtle/60" : "border-l-transparent hover:bg-subtle",
       )}
     >
@@ -51,8 +51,10 @@ function QueueRow({ pair, active, onClick }: { pair: Pair; active: boolean; onCl
         <span className={cn("size-2 shrink-0 rounded-full", TONE_FILL[tone])} />
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
-        <div className="truncate text-[12px] text-ink-3">
-          {pair.record_a.source_system} · {pair.record_b.source_system}
+        <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-ink-3">
+          <span className="tnum shrink-0 font-mono text-[10.5px] text-ink-3">TASK-{String(pair.id).padStart(4, "0")}</span>
+          <span className="text-ink-3">·</span>
+          <span className="truncate">{pair.record_a.source_system} · {pair.record_b.source_system}</span>
         </div>
         <div className="tnum text-[12.5px] font-semibold text-ink">{pair.score.toFixed(2)}</div>
       </div>
@@ -60,11 +62,14 @@ function QueueRow({ pair, active, onClick }: { pair: Pair; active: boolean; onCl
   );
 }
 
-function ComparisonRow({ field, a, b, fs }: { field: string; a: SourceRecord; b: SourceRecord; fs?: FieldScore }) {
+function ComparisonRow({ field, a, b, fs, conflict }: { field: string; a: SourceRecord; b: SourceRecord; fs?: FieldScore; conflict?: boolean }) {
   const av = (a as unknown as Record<string, string>)[field] ?? "";
   const bv = (b as unknown as Record<string, string>)[field] ?? "";
   const equal = av.toLowerCase() === bv.toLowerCase();
-  const tone = fs ? simTone(fs.similarity) : equal ? "match" : "miss";
+  // A critical-field disagreement (a different birth date or sex) is a conflict even
+  // when the strings are close, so it overrides the similarity tone here just as it
+  // does in the merge preview.
+  const tone = conflict ? "miss" : fs ? simTone(fs.similarity) : equal ? "match" : "miss";
   const informational = !fs; // mrn / source_system are expected to differ
   const mono = field === "zip" || field === "mrn";
   const show = (v: string) => (!v ? "-" : field === "dob" ? formatDate(v) : v);
@@ -78,14 +83,21 @@ function ComparisonRow({ field, a, b, fs }: { field: string; a: SourceRecord; b:
         {FIELD_LABELS[field] ?? field}
       </div>
       <div className={cn("text-[13.5px] text-ink", mono && "tnum font-mono text-[12.5px]")}>{show(av)}</div>
-      <div
-        className={cn(
-          "text-[13.5px]",
-          mono && "tnum font-mono text-[12.5px]",
-          informational ? "text-ink" : equal ? "text-ink" : cn("font-medium", TONE_TEXT[tone]),
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            "text-[13.5px]",
+            mono && "tnum font-mono text-[12.5px]",
+            informational ? "text-ink" : conflict || !equal ? cn("font-medium", TONE_TEXT[tone]) : "text-ink",
+          )}
+        >
+          {show(bv)}
+        </span>
+        {conflict && (
+          <span className="rounded-full bg-miss-subtle px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-miss">
+            conflict
+          </span>
         )}
-      >
-        {show(bv)}
       </div>
       <div className="flex items-center justify-end gap-2">
         {fs ? (
@@ -103,9 +115,18 @@ function ComparisonRow({ field, a, b, fs }: { field: string; a: SourceRecord; b:
   );
 }
 
-function whySummary(reasons: FieldScore[]) {
-  const agree = reasons.filter((r) => r.similarity >= 0.9).map((r) => FIELD_LABELS[r.field] ?? r.field);
-  const conflict = reasons.filter((r) => r.similarity < 0.6).map((r) => FIELD_LABELS[r.field] ?? r.field);
+// What the two records agree and conflict on. A critical-field conflict (flagged by the
+// server's survivorship) counts as a conflict here even if the strings scored highly,
+// so the summary cannot say "no hard conflicts" while a birth year disagrees.
+function whySummary(reasons: FieldScore[], conflictFields: Set<string>) {
+  const agree = reasons
+    .filter((r) => r.similarity >= 0.9 && !conflictFields.has(r.field))
+    .map((r) => FIELD_LABELS[r.field] ?? r.field);
+  const conflictSet = new Set<string>([
+    ...reasons.filter((r) => r.similarity < 0.6).map((r) => r.field),
+    ...conflictFields,
+  ]);
+  const conflict = [...conflictSet].map((f) => FIELD_LABELS[f] ?? f);
   return { agree, conflict };
 }
 
@@ -220,7 +241,11 @@ function ReviewDetail({ pair, status, onDecided, onBack }: { pair: Pair; status:
   const qc = useQueryClient();
   const [action, setAction] = useState<Action | null>(null);
   const reasonsByField = useMemo(() => Object.fromEntries(pair.reasons.map((r) => [r.field, r])), [pair.reasons]);
-  const { agree, conflict } = whySummary(pair.reasons);
+  const conflictFields = useMemo(
+    () => new Set(pair.survivorship.fields.filter((s) => s.conflict).map((s) => s.field)),
+    [pair.survivorship],
+  );
+  const { agree, conflict } = whySummary(pair.reasons, conflictFields);
   const isLead = current?.role === "lead";
   const pending = status === "pending";
 
@@ -300,7 +325,7 @@ function ReviewDetail({ pair, status, onDecided, onBack }: { pair: Pair; status:
                 </div>
                 <div className="px-3">
                   {COMPARE_FIELDS.map((f) => (
-                    <ComparisonRow key={f} field={f} a={pair.record_a} b={pair.record_b} fs={reasonsByField[f]} />
+                    <ComparisonRow key={f} field={f} a={pair.record_a} b={pair.record_b} fs={reasonsByField[f]} conflict={conflictFields.has(f)} />
                   ))}
                 </div>
               </div>
