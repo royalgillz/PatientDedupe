@@ -252,26 +252,6 @@ Versions confirmed current as of 2026-06-26.
 | Analytics | Apache Hadoop (Java MapReduce) + HiveQL, on JDK 8 | Hadoop 3.4.3 |
 | Analytics tests | JUnit + H2 (SQL parity) | 5.14.4 / 2.4.240 |
 
-## Project status
-
-- [x] **Phase 0** - Setup, toolchain, Synthea data, live deploy pipeline.
-- [x] **Phase 1** - C++ matching core: hand-rolled metrics, a weighted explainable
-  score, unit tests, a benchmark vs a Python baseline, and precision/recall.
-- [x] **Product** - the stewardship console (dashboard, review queue, audit, search,
-  sandbox) on a Node + Postgres API, deployed live, with the engine running as
-  WebAssembly on both tiers.
-- [x] **Phase 2** - SQL blocking layer: phonetic keys (dmetaphone), partitioning, and
-  functional indexes, with the comparison reduction and blocking recall measured and
-  shown on the dashboard.
-- [x] **Phase 3** - Java HAPI FHIR `Patient/$match` facade, reusing the SQL blocking
-  layer for candidates and running the same C++ engine as WebAssembly inside the JVM.
-- [x] **Phase 5** - Hadoop analytics: a hand-written Java MapReduce job (with a HiveQL
-  twin) computing duplicate rate by registration site, on a single-node HDFS + YARN
-  cluster, measured at increasing scales.
-- [x] **Automated tests** - backend API and blocking integration tests (Vitest against a
-  Testcontainers Postgres) and Playwright end-to-end tests of the review console,
-  including the five safety flows, run in CI.
-
 ## Testing
 
 Every layer has tests that cite the specs they verify:
