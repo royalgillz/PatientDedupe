@@ -63,9 +63,24 @@ axe in CI.
 
 ![Dashboard](assets/screenshots/app-dashboard.png)
 
-It is responsive down to small phone screens, including the Fold cover display:
+## Why I built it
 
-![Mobile review](assets/screenshots/app-fold-review.png)
+Every health system runs into the same quiet, expensive problem: the same person ends
+up as two, three, or five different records, and nobody notices until a clinician is
+staring at half a chart. There is no national patient identifier in the US, names
+change, dates get fat-fingered, and every interface spec handles it a little
+differently. I wanted to build the thing that sits in the middle of that mess and makes
+a call it can defend.
+
+I also wanted a project I could explain end to end, where every layer earns its place
+rather than being a framework call. So the matching core is hand-written C++ string
+metrics, fast and precise enough to trust at the auto-merge line. The system never
+compares every record to every other one; a SQL blocking layer on phonetic keys cuts
+the work by about 99.9% first. And the part most demos skip is the one I cared about
+most: a console a real steward would actually use to work the hard cases, where every
+merge previews the surviving record, is reversible, and leaves an audit trail you could
+put in front of a regulator. The matching engine is the clever part. The stewardship
+console is the point.
 
 ## Why it matters, and who it is for
 

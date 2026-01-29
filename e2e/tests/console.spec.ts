@@ -35,9 +35,16 @@ test("the queue loads with pairs and the score-and-reason breakdown", async ({ p
 // @spec CONSOLE-001
 test("filtering by band shows only pairs in that score band", async ({ page }) => {
   await page.goto("/queue");
-  await expect(page.getByText("2 pending")).toBeVisible(); // the two review-band pairs
+  await expect(page.getByText("2 needs review")).toBeVisible(); // defaults to the review band
   await bandSelect(page).selectOption("match");
-  await expect(page.getByText("1 pending")).toBeVisible(); // narrowed to the one match-band pair
+  await expect(page.getByText("1 likely match")).toBeVisible(); // narrowed to the one match-band pair
+});
+
+// @spec CONSOLE-001
+test("the pending count reconciles with the dashboard when the band filter is cleared", async ({ page }) => {
+  await page.goto("/queue");
+  await page.getByRole("button", { name: "Show all pending" }).click();
+  await expect(page.getByText("3 pending")).toBeVisible(); // all three pending fixture pairs
 });
 
 // @spec CONSOLE-004, API-003

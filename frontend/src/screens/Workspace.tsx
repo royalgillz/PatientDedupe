@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Select, Textarea } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api, STATUS_LABEL, type Band, type FieldScore, type Pair, type PairStatus, type SourceRecord, type Survivorship } from "@/lib/api";
+import { api, bandLabel, STATUS_LABEL, type Band, type FieldScore, type Pair, type PairStatus, type SourceRecord, type Survivorship } from "@/lib/api";
 import { FIELD_LABELS, formatDate, formatDateTime, relativeTime } from "@/lib/format";
 import { useReviewer } from "@/lib/reviewer";
 import { cn } from "@/lib/utils";
@@ -437,12 +437,17 @@ function ReviewDetail({ pair, status, onDecided, onBack }: { pair: Pair; status:
 export default function Workspace() {
   const [params, setParams] = useSearchParams();
   const status = (params.get("status") as PairStatus) || "pending";
-  const band = params.get("band") ?? (status === "pending" ? "review" : "");
+  // The pending queue defaults to the review band (the cases that need a human); other
+  // statuses default to every band. "all" is an explicit value, distinct from the
+  // default, so the steward can deliberately widen a pending view to all bands.
+  const band = params.get("band") ?? (status === "pending" ? "review" : "all");
   const q = params.get("q") ?? "";
+  const isAllBands = band === "all";
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   // Filters live in the URL so they survive navigating into a pair and back, and a refresh.
+  // An empty band clears the param back to the status default; any other value is explicit.
   const setFilter = (next: { status?: string; band?: string; q?: string }) => {
     const merged = { status, band, q, ...next };
     const sp: Record<string, string> = {};
@@ -455,7 +460,7 @@ export default function Workspace() {
 
   const { data: queue = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["queue", status, band, q, limit],
-    queryFn: () => api.queue({ status, band: band || undefined, q: q || undefined, limit }),
+    queryFn: () => api.queue({ status, band: isAllBands ? undefined : band, q: q || undefined, limit }),
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
@@ -501,7 +506,7 @@ export default function Workspace() {
             {STATUS_TABS.map((s) => (
               <button
                 key={s}
-                onClick={() => { setFilter({ status: s }); setSelectedId(null); }}
+                onClick={() => { setFilter({ status: s, band: "" }); setSelectedId(null); }}
                 className={cn(
                   "shrink-0 rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors",
                   status === s ? "bg-brand-subtle text-brand-ink" : "text-ink-2 hover:bg-subtle",
@@ -514,21 +519,31 @@ export default function Workspace() {
             ))}
           </div>
           <div className="flex items-center justify-between">
+            {/* Say what the count actually counts: the band filter narrows it, so a bare
+                "pending" would disagree with the dashboard's all-pending total. */}
             <span className="tnum text-[12px] text-ink-3">
               {queue.length}
-              {maybeMore ? "+" : ""} {STATUS_LABEL[status].toLowerCase()}
+              {maybeMore ? "+" : ""} {isAllBands ? STATUS_LABEL[status].toLowerCase() : bandLabel[band as Band].toLowerCase()}
             </span>
+            {!isAllBands && status === "pending" && (
+              <button
+                onClick={() => setFilter({ band: "all" })}
+                className="text-[12px] font-medium text-brand hover:text-brand-hover"
+              >
+                Show all pending
+              </button>
+            )}
           </div>
           <div className="flex gap-2">
             <input
               value={q}
               onChange={(e) => setFilter({ q: e.target.value })}
               aria-label="Filter the queue by name or MRN"
-              placeholder="Filter by name or MRN"
+              placeholder="Filter this queue"
               className="h-8 flex-1 rounded-md border bg-app px-2.5 text-[13px] text-ink placeholder:text-ink-3 focus-ring"
             />
             <Select value={band} onChange={(e) => setFilter({ band: e.target.value })} aria-label="Filter by confidence band" className="h-8 text-[13px]">
-              <option value="">All bands</option>
+              <option value="all">All bands</option>
               <option value="review">Needs review</option>
               <option value="match">Likely match</option>
               <option value="no-match">Unlikely</option>
